@@ -22,6 +22,6 @@ class Settings(BaseSettings):
     HUGGINGFACE_API_KEY: Union[str, None] = None
     HUGGINGFACE_MODEL_URL: Union[str, None] = None
 
-    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
+    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env", extra="ignore")
 
 settings = Settings()

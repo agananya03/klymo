@@ -1,50 +1,59 @@
+'use client';
+
+import { useState } from 'react';
 import DeviceIdDisplay from "@/components/DeviceIdDisplay";
 import CameraCapture from "@/components/CameraCapture";
+import ProfileForm from "@/components/ProfileForm";
 
 export default function Home() {
+  const [step, setStep] = useState<'verification' | 'profile' | 'chat'>('verification');
+
+  // Callback when CameraCapture successfully verifies
+  const handleVerificationSuccess = () => {
+    setStep('profile');
+  };
+
+  // Callback when Profile is saved
+  const handleProfileComplete = () => {
+    setStep('chat');
+  };
+
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start w-full max-w-lg">
-        <h1 className="text-2xl font-bold">Klymo</h1>
-        <DeviceIdDisplay />
-
-        <div className="w-full">
-          <h2 className="text-lg font-semibold mb-4 text-center">User Verification</h2>
-          <CameraCapture onCapture={(img) => console.log("Captured:", img.slice(0, 50) + "...")} />
+        <div className="w-full text-center sm:text-left">
+          <h1 className="text-3xl font-bold mb-2">Klymo</h1>
+          <DeviceIdDisplay />
         </div>
 
-        <div className="text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <p>
-            Welcome to Klymo. The device ID above is generated securely and stored locally.
-          </p>
+        <div className="w-full transition-all duration-500">
+          {step === 'verification' && (
+            <CameraCapture onCapture={handleVerificationSuccess} />
+          )}
+
+          {step === 'profile' && (
+            <ProfileForm onProfileComplete={handleProfileComplete} />
+          )}
+
+          {step === 'chat' && (
+            <div className="p-8 border rounded-xl bg-white dark:bg-gray-800 shadow-md text-center animate-in fade-in zoom-in duration-500">
+              <h2 className="text-2xl font-bold text-green-600 mb-4">You are ready!</h2>
+              <p className="text-gray-600 dark:text-gray-300">
+                Profile setup complete. <br />
+                (Chat interface coming soon...)
+              </p>
+              <button
+                onClick={() => setStep('profile')}
+                className="mt-6 text-sm text-blue-500 hover:underline"
+              >
+                Edit Profile
+              </button>
+            </div>
+          )}
         </div>
       </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+      {/* Footer can be simplified or removed */}
     </div>
   );
 }
