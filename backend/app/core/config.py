@@ -17,11 +17,11 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
-    REDIS_PASSWORD: Union[str, None] = None
 
-    # Hugging Face
+    REDIS_PASSWORD: Union[str, None] = None
+    
+    # AI Keys
     HUGGINGFACE_API_KEY: Union[str, None] = None
-    HUGGINGFACE_MODEL_URL: Union[str, None] = None
 
     @property
     def model_id(self) -> str:
