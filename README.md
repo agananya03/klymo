@@ -46,3 +46,15 @@ This project consists of a Next.js 14 frontend and a FastAPI backend.
    npm run dev
    ```
    The app will be available at http://localhost:3000.
+
+### Docker
+
+To run the entire stack with Docker Compose:
+
+1. Ensure you have Docker Installed and Running.
+2. Run:
+   ```bash
+   docker-compose up --build
+   ```
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:8000
