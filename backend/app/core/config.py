@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
     REDIS_PASSWORD: Union[str, None] = None
 
+    # Hugging Face
+    HUGGINGFACE_API_KEY: Union[str, None] = None
+    HUGGINGFACE_MODEL_URL: Union[str, None] = None
+
     model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
 
 settings = Settings()
