@@ -28,11 +28,12 @@ class User(Base):
 
 class Session(Base):
     __tablename__ = "sessions"
-
-    session_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user1_device_id = Column(String(64), ForeignKey("users.device_id"))
-    user2_device_id = Column(String(64), ForeignKey("users.device_id"))
+    
+    session_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user1_device_id = Column(String(64), ForeignKey("users.device_id"), nullable=False)
+    user2_device_id = Column(String(64), ForeignKey("users.device_id"), nullable=False)
     created_at = Column(DateTime, default=func.now())
+    is_active = Column(Boolean, default=True)
     ended_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -47,7 +48,7 @@ class Report(Base):
     id = Column(Integer, primary_key=True, index=True) # Serial is implicit with Integer PK
     reporter_device_id = Column(String(64), ForeignKey("users.device_id"))
     reported_device_id = Column(String(64), ForeignKey("users.device_id"))
-    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.session_id"))
+    session_id = Column(String(36), ForeignKey("sessions.session_id"))
     reason = Column(Text, nullable=True) # "Report description"
     reported_at = Column(DateTime, default=func.now())
 

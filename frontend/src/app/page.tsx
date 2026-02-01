@@ -4,9 +4,12 @@ import { useState } from 'react';
 import DeviceIdDisplay from "@/components/DeviceIdDisplay";
 import CameraCapture from "@/components/CameraCapture";
 import ProfileForm from "@/components/ProfileForm";
+import MatchingQueue from "@/components/MatchingQueue";
+import ChatInterface from "@/components/ChatInterface";
 
 export default function Home() {
   const [step, setStep] = useState<'verification' | 'profile' | 'chat'>('verification');
+  const [chatSession, setChatSession] = useState<any>(null); // To store session data
 
   // Callback when CameraCapture successfully verifies
   const handleVerificationSuccess = () => {
@@ -14,8 +17,19 @@ export default function Home() {
   };
 
   // Callback when Profile is saved
+  // Callback when Profile is saved
   const handleProfileComplete = () => {
+    console.log("Setting step to chat");
     setStep('chat');
+  };
+
+  const handleMatchFound = (sessionData: any) => {
+    setChatSession(sessionData);
+  };
+
+  const handleLeaveChat = () => {
+    setChatSession(null);
+    // Let's reset to queue (chat step, no session).
   };
 
   return (
@@ -36,19 +50,28 @@ export default function Home() {
           )}
 
           {step === 'chat' && (
-            <div className="p-8 border rounded-xl bg-white dark:bg-gray-800 shadow-md text-center animate-in fade-in zoom-in duration-500">
-              <h2 className="text-2xl font-bold text-green-600 mb-4">You are ready!</h2>
-              <p className="text-gray-600 dark:text-gray-300">
-                Profile setup complete. <br />
-                (Chat interface coming soon...)
-              </p>
-              <button
-                onClick={() => setStep('profile')}
-                className="mt-6 text-sm text-blue-500 hover:underline"
-              >
-                Edit Profile
-              </button>
-            </div>
+            <>
+              {!chatSession ? (
+                <MatchingQueue onMatchFound={handleMatchFound} />
+              ) : (
+                <ChatInterface
+                  sessionData={chatSession}
+                  onLeave={handleLeaveChat}
+                  onNext={() => setChatSession(null)}
+                />
+              )}
+
+              {!chatSession && (
+                <div className="mt-8 text-center">
+                  <button
+                    onClick={() => setStep('profile')}
+                    className="text-sm text-gray-500 hover:underline"
+                  >
+                    Back to Profile
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>

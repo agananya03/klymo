@@ -29,6 +29,7 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
         }
 
         try {
+            // Strict constraint for user-facing camera
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'user', width: 640, height: 480 }
             });
@@ -41,7 +42,7 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
                     setIsLoading(false);
                 };
             }
-        } catch (err: any) {
+        } catch (err) {
             console.error("Error accessing camera:", err);
             setError(`Camera access denied. Please allow permissions to verify.`);
             setIsLoading(false);
@@ -75,8 +76,10 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
             return;
         }
 
+        // Draw current frame
         ctx.drawImage(video, 0, 0);
 
+        // Convert to Blob (JPEG 92%)
         canvas.toBlob(async (blob) => {
             if (!blob) {
                 setError("Failed to capture image");
@@ -84,15 +87,17 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
                 return;
             }
 
+            // Immediately stop camera privacy rule
             stopCamera();
 
             try {
                 const deviceId = await generateDeviceId();
-                console.log("Starting verification request...");
+                console.log("Starting verification request..."); // Force HMR update
                 const formData = new FormData();
                 formData.append('file', blob, 'capture.jpg');
                 formData.append('device_id', deviceId);
 
+                // Use relative path to leverage Next.js proxy
                 const response = await fetch('/api/v1/verification/verify-gender', {
                     method: 'POST',
                     body: formData,
@@ -121,6 +126,7 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
                 setVerificationStatus('success');
                 setVerificationMessage(`Verified as ${result.gender} (${(result.confidence * 100).toFixed(1)}%)`);
 
+                // Trigger parent callback after short delay for UX
                 if (onCapture) {
                     setTimeout(() => onCapture(blob.size.toString()), 1500);
                 }
@@ -128,6 +134,7 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
                 console.error("Verification error:", err);
                 setVerificationStatus('failed');
                 setVerificationMessage(err instanceof Error ? err.message : "Verification failed");
+                // Allow retrying
             } finally {
                 setIsLoading(false);
             }
@@ -135,6 +142,7 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
         }, 'image/jpeg', 0.92);
     };
 
+    // Cleanup
     useEffect(() => {
         return () => stopCamera();
     }, [stopCamera]);
@@ -149,6 +157,7 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
                 verificationStatus === 'failed' ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'
                 }`}>
 
+                {/* Initial State / Messages */}
                 {!isStreaming && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-10 bg-black/80 text-white">
                         {verificationStatus === 'success' ? (

@@ -55,7 +55,9 @@ export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
             if (!res.ok) throw new Error('Failed to save profile');
 
             setStatus('Profile saved successfully!');
-            setTimeout(onProfileComplete, 1000); // Proceed after delay
+            setStatus('Profile saved successfully!');
+            console.log("Calling onProfileComplete immediately");
+            onProfileComplete(); // Immediate call for debugging
         } catch (err) {
             setStatus('Error saving profile. Please try again.');
             console.error(err);

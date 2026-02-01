@@ -1,37 +1,45 @@
+import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-
 from contextlib import asynccontextmanager
 from app.core.redis_client import redis_client
-from app.core.socket_manager import socket_manager
-import socketio
+from app.core.socket_server import sio
+# Import events to register handlers
+import app.websocket.events 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup
     redis_client.connect()
     yield
+    # Shutdown
     redis_client.close()
 
-app = FastAPI(
+fastapi_app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Set all CORS enabled origins
+if settings.BACKEND_CORS_ORIGINS:
+    fastapi_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-@app.get("/")
+@fastapi_app.get("/")
 def read_root():
     return {"message": "Welcome to FastAPI Backend"}
 
+# Import and include router here when ready
 from app.api.v1.api import api_router
-app.include_router(api_router, prefix=settings.API_V1_STR)
+fastapi_app.include_router(api_router, prefix=settings.API_V1_STR)
 
-socket_app = socketio.ASGIApp(socket_manager.sio, other_asgi_app=app)
+# Wrap FastAPI with Socket.IO ASGI App
+# This allows Socket.IO to handle /socket.io/ requests and pass the rest to FastAPI
+app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
