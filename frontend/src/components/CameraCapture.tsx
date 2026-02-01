@@ -3,7 +3,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { generateDeviceId } from '@/utils/device-id';
 
-export default function CameraCapture() {
+interface CameraCaptureProps {
+    onCapture?: (blobSize: string) => void;
+}
+
+export default function CameraCapture({ onCapture }: CameraCaptureProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isStreaming, setIsStreaming] = useState(false);
@@ -107,6 +111,11 @@ export default function CameraCapture() {
 
                 setVerificationStatus('success');
                 setVerificationMessage(`Verified as ${result.gender} (${(result.confidence * 100).toFixed(1)}%)`);
+
+                // Trigger parent callback after short delay for UX
+                if (onCapture) {
+                    setTimeout(() => onCapture(blob.size.toString()), 1500);
+                }
             } catch (err) {
                 console.error("Verification error:", err);
                 setVerificationStatus('failed');
