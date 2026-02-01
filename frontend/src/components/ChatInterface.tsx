@@ -5,13 +5,18 @@ import { getSocket } from '@/utils/socket';
 import { generateDeviceId } from '@/utils/device-id';
 
 interface ChatInterfaceProps {
-    sessionData: any; // { session_id, partner: { nickname, device_id } }
+    sessionData: {
+        session_id: string;
+        partner_id: string;
+        partner_nickname?: string;
+        partner_gender?: string;
+    };
     onLeave: () => void;
     onNext: () => void;
 }
 
 interface Message {
-    id: string; // or timestamp
+    id: string;
     sender_id: string;
     content: string;
     timestamp: string;
@@ -22,6 +27,7 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [myId, setMyId] = useState<string>('');
+    const myIdRef = useRef<string>(''); // Ref for sync access in listener
     const [partnerLeft, setPartnerLeft] = useState(false);
 
     // Auto-scroll ref
@@ -31,32 +37,44 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
-        const init = async () => {
+        const socket = getSocket();
+
+        // Join the room!
+        socket.emit('join_session', { session_id: sessionData.session_id });
+
+        // Define handlers
+        const handleNewMessage = (data: any) => {
+            setPartnerTyping(false);
+            setMessages((prev) => [...prev, {
+                id: Date.now().toString() + Math.random().toString(), // Unique ID
+                sender_id: data.sender_id,
+                content: data.content,
+                timestamp: data.timestamp,
+                isMe: data.sender_id === myIdRef.current // Use Ref
+            }]);
+        };
+
+        const handlePartnerLeft = () => {
+            setPartnerLeft(true);
+            setPartnerTyping(false);
+        };
+
+        const handlePartnerTyping = (data: any) => {
+            setPartnerTyping(data.is_typing);
+        };
+
+        // Register listeners synchronously
+        socket.on('new_message', handleNewMessage);
+        socket.on('partner_left', handlePartnerLeft);
+        socket.on('partner_typing', handlePartnerTyping);
+
+        // Async ID fetch
+        const fetchIds = async () => {
             const id = await generateDeviceId();
             setMyId(id);
-
-            const socket = getSocket();
-
-            socket.on('new_message', (data) => {
-                setPartnerTyping(false); // Clear typing when message received
-                setMessages((prev) => [...prev, {
-                    id: Date.now().toString(), // Simple ID
-                    sender_id: data.sender_id,
-                    content: data.content,
-                    timestamp: data.timestamp,
-                    isMe: data.sender_id === id
-                }]);
-            });
-
-            socket.on('partner_left', () => {
-                setPartnerLeft(true);
-                setPartnerTyping(false);
-            });
-
-            socket.on('partner_typing', (data) => {
-                setPartnerTyping(data.is_typing);
-            });
+            myIdRef.current = id;
         };
+        fetchIds();
 
         // Load persisted messages
         const saved = sessionStorage.getItem(`chat_${sessionData.session_id}`);
@@ -68,13 +86,10 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             }
         }
 
-        init();
-
         return () => {
-            const socket = getSocket();
-            socket.off('new_message');
-            socket.off('partner_left');
-            socket.off('partner_typing');
+            socket.off('new_message', handleNewMessage);
+            socket.off('partner_left', handlePartnerLeft);
+            socket.off('partner_typing', handlePartnerTyping);
         };
     }, []);
 
@@ -141,7 +156,7 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             socket.emit('report_user', {
                 session_id: sessionData.session_id,
                 reason: reason,
-                reported_device_id: sessionData.partner.device_id
+                reported_device_id: sessionData.partner_id
             });
             alert("Report submitted.");
             handleLeave();
@@ -155,7 +170,7 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                 <div>
                     <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${partnerLeft ? 'bg-gray-400' : 'bg-green-500 animate-pulse'}`}></span>
-                        {sessionData.partner.nickname || "Stranger"}
+                        {sessionData.partner_nickname || "Stranger"}
                     </h3>
                     <p className="text-xs text-gray-400">Encrypted • Ephemeral</p>
                 </div>

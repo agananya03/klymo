@@ -3,121 +3,118 @@ import logging
 from app.core.socket_server import sio
 from app.core.database import SessionLocal
 from app.models.sql_models import User, Session, Report
-from app.services.matching_service import MatchingService
+from app.services.matching_service import mapping_service
 
 logger = logging.getLogger(__name__)
 
 @sio.event
 async def connect(sid, environ, auth):
-    """
-    Handle connection. 
-    Auth expectation: { 'device_id': '...' }
-    """
+    print(f"DEBUG: Connect Event {sid}")
+    # ... (auth logic) ...
     device_id = None
     if auth and 'device_id' in auth:
         device_id = auth['device_id']
-    else:
-        # Fallback or reject
-        pass
+    
+    if not device_id:
+        from urllib.parse import parse_qs
+        query_string = environ.get('QUERY_STRING', '')
+        params = parse_qs(query_string)
+        if 'device_id' in params:
+            device_id = params['device_id'][0]
 
     if not device_id:
+        print("DEBUG: Connect Rejected - No Device ID")
         return False 
 
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.device_id == device_id).first()
         if not user:
+            print(f"DEBUG: Connect Rejected - User Not Found {device_id}")
             return False
         
         await sio.save_session(sid, {'device_id': device_id})
+        await sio.enter_room(sid, f"user_{device_id}")
         
-        # Join a private room for this user so we can target them later (e.g. on match)
-        sio.enter_room(sid, f"user_{device_id}")
-        
-        logger.info(f"Connected: {device_id}")
+        print(f"DEBUG: Connected & Session Saved: {device_id}")
         return True
     except Exception as e:
-        logger.error(f"Connect Logic Error: {e}")
+        print(f"DEBUG: Connect Error: {e}")
         return False
     finally:
         db.close()
 
 @sio.event
-async def disconnect(sid):
+async def disconnect(sid, *args):
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
     
     if device_id:
-        logger.info(f"Disconnected: {device_id}")
-        # 1. Leave Queue
-        MatchingService.leave_queue(device_id)
-        
-        # 2. Notify Partner if in active session (Optional optimization)
-        # Detailed check would be expensive here for every disconnect, 
-        # but handled via heartbeat or client logic usually.
-        # For strictness:
-        # db = SessionLocal()
-        # active_session = ...
-        # if active_session: emit 'partner_disconnected' to session_id
+        print(f"DEBUG: Disconnect {device_id}")
+        mapping_service.leave_queue(device_id)
 
 @sio.event
 async def join_queue(sid, data):
-    """
-    Client requests to match.
-    payload: { 'preference': 'male'|'female'|'any' }
-    """
+    print(f"DEBUG: join_queue called for {sid} with data {data}")
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
     
-    if not device_id: return
+    print(f"DEBUG: Session Device ID: {device_id}")
+    if not device_id: 
+        print("DEBUG: No device_id in session")
+        return
 
     preference = data.get('preference', 'any')
     
     db = SessionLocal()
     try:
-        # Call Synchronous Matching Service
-        result = MatchingService.join_queue(db, device_id, preference)
+        user = db.query(User).filter(User.device_id == device_id).first()
+        if not user or not user.gender:
+            print("DEBUG: Gender missing")
+            await sio.emit('error', {'message': 'User gender not found. Please verify first.'}, room=sid)
+            return
+
+        print(f"DEBUG: Matching for {device_id} ({user.gender}) seeking {preference}")
+        result = mapping_service.find_match(device_id, user.gender, preference)
+        print(f"DEBUG: Match Result: {result}")
         
         if result['status'] == 'matched':
+            # ... (emit match logic) ...
             session_id = result['session_id']
-            partner_data = result['partner']
-            partner_id = partner_data['device_id']
+            partner_id = result['partner_id']
+            partner_gender = result['partner_gender']
             
-            # Form Payload
-            match_payload_me = {
+            match_payload = {
                 'session_id': session_id,
-                'partner': partner_data
-            }
-            match_payload_partner = {
-                'session_id': session_id,
-                'partner': {'device_id': device_id, 'nickname': result.get('my_nickname', 'Stranger')} # Service needs to return my nickname too?
-                # MatchingService currently only returns partner info in 'partner' dict
-                # We might need to fetch my nickname or update MatchingService
+                'partner_id': partner_id,
+                'partner_gender': partner_gender
             }
             
-            # Optimization: Update MatchingService to return both users info or fetch here
-            # Fetching here for simplicity
-            me = db.query(User).filter(User.device_id == device_id).first()
-            match_payload_partner['partner']['nickname'] = me.nickname if me else "Stranger"
-
-            # 1. Join Rooms
-            sio.enter_room(sid, session_id)
-            # We can't easily join the partner's SID to the room directly without their SID.
-            # But we can emit to their private room `user_{partner_id}` telling them to join!
+            await sio.emit('match_found', match_payload, room=sid)
             
-            # Emit to ME
-            await sio.emit('match_found', match_payload_me, room=sid)
+            partner_payload = {
+                'session_id': session_id,
+                'partner_id': device_id,
+                'partner_gender': user.gender
+            }
+            # Put both users in the room!
+            await sio.enter_room(sid, session_id)
+            # For the partner, we need their SID. 
+            # We don't have partner's SID easily here unless we store it in Redis or look up.
+            # But wait, mapping_service returned partner_id (device_id).
+            # We emitted to room f"user_{partner_id}".
+            # We can't enter_room for another SID easily if we don't know it.
+            # BUT, we can make the CLIENT join the room upon 'match_found' event.
+            await sio.emit('match_found', partner_payload, room=f"user_{partner_id}")
             
-            # Emit to PARTNER (who is in queue)
-            # They need to receive this, then client joins 'session_id' room via `join_session` event OR calls API?
-            # Better: Server tells client "You matched". Client Auto-joins.
-            await sio.emit('match_found', match_payload_partner, room=f"user_{partner_id}")
+        elif result['status'] == 'queued':
+            await sio.emit('queue_status', {'status': 'queued', 'message': 'Waiting for match...'}, room=sid)
             
-        else:
-            await sio.emit('queue_status', {'status': 'queued'}, room=sid)
+        elif result['status'] == 'cooldown':
+            await sio.emit('error', {'message': f"Cooldown: Wait {result.get('wait')}s"}, room=sid)
 
     except Exception as e:
-        logger.error(f"Join Queue Error: {e}")
+        print(f"DEBUG: Join Queue Error: {e}")
         await sio.emit('error', {'message': str(e)}, room=sid)
     finally:
         db.close()
@@ -132,7 +129,7 @@ async def join_session(sid, data):
         device_id = user_session.get('device_id')
     
     # Validation logic...
-    sio.enter_room(sid, session_id)
+    await sio.enter_room(sid, session_id)
 
 @sio.event
 async def send_message(sid, data):
@@ -159,7 +156,7 @@ async def leave_chat(sid, data):
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
         
-    sio.leave_room(sid, session_id)
+    await sio.leave_room(sid, session_id)
     await sio.emit('partner_left', {'reason': 'left'}, room=session_id)
     
     # DB Update to close session

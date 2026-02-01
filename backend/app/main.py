@@ -4,8 +4,9 @@ from app.core.config import settings
 
 from contextlib import asynccontextmanager
 from app.core.redis_client import redis_client
-from app.core.socket_manager import socket_manager
+from app.core.socket_server import sio
 import socketio
+import app.websocket.events # Register Socket.IO Events
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,4 +52,4 @@ def read_root():
 from app.api.v1.api import api_router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-socket_app = socketio.ASGIApp(socket_manager.sio, other_asgi_app=app)
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)

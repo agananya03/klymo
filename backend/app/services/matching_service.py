@@ -92,54 +92,65 @@ class MatchingService:
         # We LPOP from the head of the lists.
         
         for queue_name in search_queues:
-            # Atomic-like check: LPOP one candidate
-            candidate_json = self.redis.lpop(queue_name)
-            if not candidate_json:
-                continue
-                
-            candidate = json.loads(candidate_json)
-            c_id = candidate['user_id']
-            c_gender = candidate['gender']
-            c_pref = candidate['preference']
+            # Iterate up to 50 candidates deep to find a match
+            # To preserve order, we rotated checked candidates to the tail? 
+            # OR we just LPOP and RPUSH back if not match. 
+            # Note: This cycles the queue. 
             
-            # Prevent matching with self (edge case if re-queuing fast)
-            if c_id == user_id:
-                self.redis.lpush(queue_name, candidate_json)
-                continue
+            for _ in range(50):
+                candidate_json = self.redis.lpop(queue_name)
+                if not candidate_json:
+                    break # Queue empty
+                
+                candidate = json.loads(candidate_json)
+                c_id = candidate['user_id']
+                c_gender = candidate['gender']
+                c_pref = candidate['preference']
+                
+                logger.info(f"Checking candidate: {c_id} ({c_gender}) for {user_id} ({gender})")
 
-            # 5. Verify Bidirectional Compatibility
-            is_compatible = False
-            
-            # Condition 1: Candidate matches My Preference
-            # (Implied by the queue I found them in? Not strictly for ANY queue)
-            if preference == "any" or preference == c_gender:
-                # Condition 2: I match Candidate's Preference
-                if c_pref == "any" or c_pref == gender:
-                    is_compatible = True
-            
-            if is_compatible:
-                # 6. Match Found
-                # Create Session ID
-                # Format: session_{smaller_id}_{larger_id}_{timestamp}
-                sorted_ids = sorted([user_id, c_id])
-                session_id = f"session_{sorted_ids[0]}_{sorted_ids[1]}_{int(time.time())}"
+                # Prevent matching with self
+                if c_id == user_id:
+                    self.redis.rpush(queue_name, candidate_json) # Move to tail? Or push back to head?
+                    # If we simply push back to head, we infinite loop on self.
+                    # Pushing to tail cycles the queue.
+                    continue
+
+                # 5. Verify Bidirectional Compatibility
+                is_compatible = False
+                if preference == "any" or preference == c_gender:
+                    if c_pref == "any" or c_pref == gender:
+                        is_compatible = True
                 
-                # Apply Limits/Cooldowns
-                self._increment_daily_limit(user_id)
-                self._increment_daily_limit(c_id)
-                self._set_cooldown(user_id)
-                self._set_cooldown(c_id)
-                
-                return {
-                    "status": "matched",
-                    "session_id": session_id,
-                    "partner_id": c_id,
-                    "partner_gender": c_gender
-                }
-            else:
-                # Not compatible: Return candidate to HEAD (LHS) of their queue 
-                # to preserve their priority/waiting position.
-                self.redis.lpush(queue_name, candidate_json)
+                if is_compatible:
+                    # 6. Match Found
+                    sorted_ids = sorted([user_id, c_id])
+                    session_id = f"session_{sorted_ids[0]}_{sorted_ids[1]}_{int(time.time())}"
+                    
+                    self._increment_daily_limit(user_id)
+                    self._increment_daily_limit(c_id)
+                    self._set_cooldown(user_id)
+                    self._set_cooldown(c_id)
+                    
+                    logger.info(f"Match SUCCESS: {user_id} <-> {c_id}")
+                    return {
+                        "status": "matched",
+                        "session_id": session_id,
+                        "partner_id": c_id,
+                        "partner_gender": c_gender
+                    }
+                else:
+                    # Not compatible: Return to TAIL to give others a chance?
+                    # Or HEAD to keep priority?
+                    # Standard FIFO: If not compatible with ME, they might be compatible with next person.
+                    # If I put them at TAIL, they lose their spot. 
+                    # Ideally I put them back at HEAD? But then I can't look at next person.
+                    # Valid Strategy: Rotate Queue. Pop Head, Check, Push Tail.
+                    # If I don't match, I leave them at Tail. 
+                    # This shuffles the queue order slightly but allows deep search.
+                    self.redis.rpush(queue_name, candidate_json)
+            
+            # End of queue loop
                 
         # 7. No Match -> Add User to Waiting Queue
         # Logic:
@@ -169,5 +180,11 @@ class MatchingService:
         self.redis.rpush(join_queue, json.dumps(user_data))
         
         return {"status": "queued", "message": "Waiting for match..."}
+
+    def leave_queue(self, user_id: str):
+        """Removes user from all queues."""
+        queues = [self.QUEUE_MALE, self.QUEUE_FEMALE, self.QUEUE_ANY]
+        for q in queues:
+            redis_client.remove_from_queue(q, user_id)
 
 mapping_service = MatchingService()

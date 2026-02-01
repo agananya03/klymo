@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     
     # AI Keys
     HUGGINGFACE_API_KEY: Union[str, None] = None
+    HUGGINGFACE_MODEL_URL: Union[str, None] = None
 
     @property
     def model_id(self) -> str:

@@ -9,7 +9,7 @@ mgr = socketio.AsyncRedisManager(
 
 sio = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins='*', # handled by allow_origins in kwargs if needed, or explicit list
+    cors_allowed_origins=['http://localhost:3000', 'http://127.0.0.1:3000'],
     # For dev, '*' is easiest, but could use settings.BACKEND_CORS_ORIGINS
     client_manager=mgr
 )
