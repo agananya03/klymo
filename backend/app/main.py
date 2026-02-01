@@ -2,9 +2,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 
+from contextlib import asynccontextmanager
+from app.core.redis_client import redis_client
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    redis_client.connect()
+    yield
+    # Shutdown
+    redis_client.close()
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
 )
 
 # Set all CORS enabled origins
