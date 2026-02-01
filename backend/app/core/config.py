@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "FastAPI Check"
     API_V1_STR: str = "/api/v1"
     
+    # Database
+    DATABASE_URL: str
+
     # CORS
     BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
 
