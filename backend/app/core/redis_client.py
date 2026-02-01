@@ -30,29 +30,35 @@ class RedisClient:
             self.client.ping()
             logging.info("Successfully connected to Redis")
         except redis.ConnectionError as e:
-            logging.error(f"Failed to connect to Redis: {e}")
-            raise e
+            logging.warning(f"Failed to connect to Redis: {e}. Caching will be disabled.")
+            self.client = None
 
     def close(self):
         if self.pool:
             self.pool.disconnect()
             logging.info("Redis connection closed")
 
-    def get_client(self) -> redis.Redis:
+    def get_client(self) -> Optional[redis.Redis]:
         if not self.client:
             self.connect()
         return self.client
 
     def get_cache(self, key: str) -> Optional[str]:
         try:
-            return self.get_client().get(key)
+            client = self.get_client()
+            if not client:
+                return None
+            return client.get(key)
         except Exception as e:
             logging.error(f"Error getting cache for key {key}: {e}")
             return None
 
     def set_cache(self, key: str, value: str, ttl: int = 3600) -> bool:
         try:
-            return self.get_client().set(key, value, ex=ttl)
+            client = self.get_client()
+            if not client:
+                return False
+            return client.set(key, value, ex=ttl)
         except Exception as e:
             logging.error(f"Error setting cache for key {key}: {e}")
             return False

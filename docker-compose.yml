@@ -9,9 +9,11 @@ services:
       - ./backend:/app
     env_file:
       - ./backend/.env
-    # Helper for Windows to ensure hot reload works reliably if standard events miss
     environment:
       - WATCHFILES_FORCE_POLLING=true
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
 
   frontend:
     build: ./frontend
@@ -20,9 +22,13 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    # Polling is often required for Next.js hot reload on Windows/Docker
     environment:
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
