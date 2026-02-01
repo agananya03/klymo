@@ -3,10 +3,12 @@ import httpx
 import logging
 from typing import Dict, Any, Optional
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
-HF_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
-HF_MODEL_URL = "https://api-inference.huggingface.co/models/microsoft/resnet-50"
+HF_API_KEY = settings.HUGGINGFACE_API_KEY
+HF_MODEL_URL = settings.HUGGINGFACE_MODEL_URL
 
 async def verify_gender_from_bytes(image_bytes: bytes) -> Dict[str, Any]:
     """

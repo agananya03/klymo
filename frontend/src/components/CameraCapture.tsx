@@ -98,11 +98,25 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
                     body: formData,
                 });
 
-                const result = await response.json();
-
+                // Defensive error handling
                 if (!response.ok) {
-                    throw new Error(result.detail || 'Verification failed');
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || `Server error (${response.status})`);
+                    } else {
+                        const errorText = await response.text();
+                        console.error("Backend error (non-JSON):", errorText);
+                        throw new Error(`Server returned an error (${response.status}). The backend might be misconfigured.`);
+                    }
                 }
+
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error("Invalid response from server: Expected JSON but received something else.");
+                }
+
+                const result = await response.json();
 
                 setVerificationStatus('success');
                 setVerificationMessage(`Verified as ${result.gender} (${(result.confidence * 100).toFixed(1)}%)`);
