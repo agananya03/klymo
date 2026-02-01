@@ -1,9 +1,11 @@
 import socketio
 import logging
+from datetime import datetime
 from app.core.socket_server import sio
 from app.core.database import SessionLocal
 from app.models.sql_models import User, Session, Report
 from app.services.matching_service import MatchingService
+from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
@@ -16,49 +18,42 @@ async def connect(sid, environ, auth):
     device_id = None
     if auth and 'device_id' in auth:
         device_id = auth['device_id']
-    else:
-        # Fallback or reject
-        pass
 
     if not device_id:
+        logger.warning("Connection rejected: No device_id provided")
         return False 
 
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.device_id == device_id).first()
         if not user:
+            logger.warning(f"Connection rejected: User {device_id} not found")
             return False
         
         await sio.save_session(sid, {'device_id': device_id})
         
-        # Join a private room for this user so we can target them later (e.g. on match)
-        sio.enter_room(sid, f"user_{device_id}")
+        # Join ONLY user room (not session room yet)
+        await sio.enter_room(sid, f"user_{device_id}")
         
-        logger.info(f"Connected: {device_id}")
+        logger.info(f"✅ Connected: {device_id} (sid: {sid})")
         return True
     except Exception as e:
-        logger.error(f"Connect Logic Error: {e}")
+        logger.error(f"Connect error: {e}")
         return False
     finally:
         db.close()
 
 @sio.event
 async def disconnect(sid):
-    async with sio.session(sid) as user_session:
-        device_id = user_session.get('device_id')
-    
-    if device_id:
-        logger.info(f"Disconnected: {device_id}")
-        # 1. Leave Queue
-        MatchingService.leave_queue(device_id)
+    try:
+        async with sio.session(sid) as user_session:
+            device_id = user_session.get('device_id')
         
-        # 2. Notify Partner if in active session (Optional optimization)
-        # Detailed check would be expensive here for every disconnect, 
-        # but handled via heartbeat or client logic usually.
-        # For strictness:
-        # db = SessionLocal()
-        # active_session = ...
-        # if active_session: emit 'partner_disconnected' to session_id
+        if device_id:
+            logger.info(f"👋 Disconnected: {device_id}")
+            MatchingService.leave_queue(device_id)
+    except Exception as e:
+        logger.error(f"Disconnect error: {e}")
 
 @sio.event
 async def join_queue(sid, data):
@@ -66,151 +61,234 @@ async def join_queue(sid, data):
     Client requests to match.
     payload: { 'preference': 'male'|'female'|'any' }
     """
-    async with sio.session(sid) as user_session:
-        device_id = user_session.get('device_id')
-    
-    if not device_id: return
-
-    preference = data.get('preference', 'any')
-    
-    db = SessionLocal()
     try:
-        # Call Synchronous Matching Service
-        result = MatchingService.join_queue(db, device_id, preference)
+        async with sio.session(sid) as user_session:
+            device_id = user_session.get('device_id')
         
-        if result['status'] == 'matched':
-            session_id = result['session_id']
-            partner_data = result['partner']
-            partner_id = partner_data['device_id']
-            
-            # Form Payload
-            match_payload_me = {
-                'session_id': session_id,
-                'partner': partner_data
-            }
-            match_payload_partner = {
-                'session_id': session_id,
-                'partner': {'device_id': device_id, 'nickname': result.get('my_nickname', 'Stranger')} # Service needs to return my nickname too?
-                # MatchingService currently only returns partner info in 'partner' dict
-                # We might need to fetch my nickname or update MatchingService
-            }
-            
-            # Optimization: Update MatchingService to return both users info or fetch here
-            # Fetching here for simplicity
+        if not device_id:
+            logger.error("join_queue: No device_id in session")
+            return
+
+        preference = data.get('preference', 'any')
+        
+        db = SessionLocal()
+        try:
             me = db.query(User).filter(User.device_id == device_id).first()
-            match_payload_partner['partner']['nickname'] = me.nickname if me else "Stranger"
+            if not me:
+                await sio.emit('error', {'message': 'User not found'}, room=sid)
+                return
+            
+            result = MatchingService.join_queue(db, device_id, preference)
+            
+            if result['status'] == 'matched':
+                session_id = result['session_id']
+                partner_data = result['partner']
+                partner_id = partner_data['device_id']
+                
+                logger.info(f"🎉 Match! {device_id} <-> {partner_id} (session: {session_id})")
+                
+                # Payloads for both users
+                match_payload_me = {
+                    'session_id': session_id,
+                    'partner': {
+                        'device_id': partner_id,
+                        'nickname': partner_data.get('nickname', 'Stranger')
+                    }
+                }
+                
+                match_payload_partner = {
+                    'session_id': session_id,
+                    'partner': {
+                        'device_id': device_id,
+                        'nickname': me.nickname if me.nickname else 'Stranger'
+                    }
+                }
+                
+                # Emit to individual user rooms
+                await sio.emit('match_found', match_payload_me, room=f"user_{device_id}")
+                await sio.emit('match_found', match_payload_partner, room=f"user_{partner_id}")
+                
+            else:
+                await sio.emit('queue_status', {'status': 'queued'}, room=sid)
+                logger.info(f"⏳ Queued: {device_id} (seeking {preference})")
 
-            # 1. Join Rooms
-            sio.enter_room(sid, session_id)
-            # We can't easily join the partner's SID to the room directly without their SID.
-            # But we can emit to their private room `user_{partner_id}` telling them to join!
+        except Exception as e:
+            logger.error(f"join_queue error: {e}", exc_info=True)
+            await sio.emit('error', {'message': str(e)}, room=sid)
+        finally:
+            db.close()
             
-            # Emit to ME
-            await sio.emit('match_found', match_payload_me, room=sid)
-            
-            # Emit to PARTNER (who is in queue)
-            # They need to receive this, then client joins 'session_id' room via `join_session` event OR calls API?
-            # Better: Server tells client "You matched". Client Auto-joins.
-            await sio.emit('match_found', match_payload_partner, room=f"user_{partner_id}")
-            
-        else:
-            await sio.emit('queue_status', {'status': 'queued'}, room=sid)
-
     except Exception as e:
-        logger.error(f"Join Queue Error: {e}")
-        await sio.emit('error', {'message': str(e)}, room=sid)
-    finally:
-        db.close()
-
-@sio.event
-async def join_session(sid, data):
-    # Same as before
-    session_id = data.get('session_id')
-    if not session_id: return
-    
-    async with sio.session(sid) as user_session:
-        device_id = user_session.get('device_id')
-    
-    # Validation logic...
-    sio.enter_room(sid, session_id)
+        logger.error(f"join_queue handler error: {e}", exc_info=True)
 
 @sio.event
 async def send_message(sid, data):
+    """
+    Send a message in a chat session.
+    Emits to BOTH users individually to avoid duplication.
+    """
     session_id = data.get('session_id')
     content = data.get('content')
-    if not session_id or not content: return
     
-    async with sio.session(sid) as user_session:
-        device_id = user_session.get('device_id')
-
-    # RELAY ONLY - NO STORAGE
-    response = {
-        'sender_id': device_id,
-        'content': content,
-        'timestamp': 'now'
-    }
-    await sio.emit('new_message', response, room=session_id)
-
-@sio.event
-async def leave_chat(sid, data):
-    session_id = data.get('session_id')
-    if not session_id: return
-
-    async with sio.session(sid) as user_session:
-        device_id = user_session.get('device_id')
-        
-    sio.leave_room(sid, session_id)
-    await sio.emit('partner_left', {'reason': 'left'}, room=session_id)
+    if not session_id or not content:
+        return
     
-    # DB Update to close session
-    db = SessionLocal()
     try:
-        sess = db.query(Session).filter(Session.session_id == session_id).first()
-        if sess:
-            sess.is_active = False
-            sess.ended_at = func.now()
-            db.commit()
-    finally:
-        db.close()
+        async with sio.session(sid) as user_session:
+            device_id = user_session.get('device_id')
+
+        if not device_id:
+            return
+
+        db = SessionLocal()
+        try:
+            sess = db.query(Session).filter(Session.session_id == session_id).first()
+            if not sess:
+                logger.error(f"Session {session_id} not found")
+                return
+            
+            # Verify sender is part of session
+            if device_id not in [sess.user1_device_id, sess.user2_device_id]:
+                logger.warning(f"Unauthorized message attempt by {device_id}")
+                return
+            
+            response = {
+                'sender_id': device_id,
+                'content': content,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            
+            # Emit ONLY to user rooms (each user in their own room)
+            await sio.emit('new_message', response, room=f"user_{sess.user1_device_id}")
+            await sio.emit('new_message', response, room=f"user_{sess.user2_device_id}")
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"send_message error: {e}")
 
 @sio.event
 async def typing_start(sid, data):
     session_id = data.get('session_id')
-    if not session_id: return
-    # Relay to room (partner will receive it)
-    await sio.emit('partner_typing', {'is_typing': True}, room=session_id, skip_sid=sid)
+    if not session_id:
+        return
+    
+    try:
+        async with sio.session(sid) as user_session:
+            device_id = user_session.get('device_id')
+        
+        if not device_id:
+            return
+        
+        db = SessionLocal()
+        try:
+            sess = db.query(Session).filter(Session.session_id == session_id).first()
+            if not sess:
+                return
+            
+            # Send to partner only
+            partner_id = sess.user2_device_id if device_id == sess.user1_device_id else sess.user1_device_id
+            await sio.emit('partner_typing', {'is_typing': True}, room=f"user_{partner_id}")
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"typing_start error: {e}")
 
 @sio.event
 async def typing_stop(sid, data):
     session_id = data.get('session_id')
-    if not session_id: return
-    # Relay to room
-    await sio.emit('partner_typing', {'is_typing': False}, room=session_id, skip_sid=sid)
+    if not session_id:
+        return
+    
+    try:
+        async with sio.session(sid) as user_session:
+            device_id = user_session.get('device_id')
+        
+        if not device_id:
+            return
+        
+        db = SessionLocal()
+        try:
+            sess = db.query(Session).filter(Session.session_id == session_id).first()
+            if not sess:
+                return
+            
+            # Send to partner only
+            partner_id = sess.user2_device_id if device_id == sess.user1_device_id else sess.user1_device_id
+            await sio.emit('partner_typing', {'is_typing': False}, room=f"user_{partner_id}")
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"typing_stop error: {e}")
+
+@sio.event
+async def leave_chat(sid, data):
+    session_id = data.get('session_id')
+    if not session_id:
+        return
+
+    try:
+        async with sio.session(sid) as user_session:
+            device_id = user_session.get('device_id')
+        
+        if not device_id:
+            return
+        
+        db = SessionLocal()
+        try:
+            sess = db.query(Session).filter(Session.session_id == session_id).first()
+            if sess:
+                # Notify both users
+                await sio.emit('partner_left', {'reason': 'left'}, room=f"user_{sess.user1_device_id}")
+                await sio.emit('partner_left', {'reason': 'left'}, room=f"user_{sess.user2_device_id}")
+                
+                # Update session
+                sess.is_active = False
+                sess.ended_at = func.now()
+                db.commit()
+                
+                logger.info(f"Session {session_id} ended by {device_id}")
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"leave_chat error: {e}")
 
 @sio.event
 async def report_user(sid, data):
     session_id = data.get('session_id')
     reason = data.get('reason')
-    reported_device_id = data.get('reported_device_id') # Client should send who they report, or we infer from session
+    reported_device_id = data.get('reported_device_id')
     
-    if not session_id or not reason: return
+    if not session_id or not reason:
+        return
     
-    async with sio.session(sid) as user_session:
-        reporter_id = user_session.get('device_id')
-        
-    db = SessionLocal()
     try:
-        # Validate session
-        # infer reported_id if not sent?
-        # Simple version:
-        report = Report(
-            session_id=session_id,
-            reporter_device_id=reporter_id,
-            reported_device_id=reported_device_id, # Optional or inferred
-            reason=reason
-        )
-        db.add(report)
-        db.commit()
-        await sio.emit('report_received', {'status': 'processed'}, room=sid)
-    finally:
-        db.close()
+        async with sio.session(sid) as user_session:
+            reporter_id = user_session.get('device_id')
+        
+        if not reporter_id:
+            return
+            
+        db = SessionLocal()
+        try:
+            report = Report(
+                session_id=session_id,
+                reporter_device_id=reporter_id,
+                reported_device_id=reported_device_id,
+                reason=reason
+            )
+            db.add(report)
+            db.commit()
+            
+            await sio.emit('report_received', {'status': 'processed'}, room=sid)
+            logger.info(f"📋 Report: {reporter_id} → {reported_device_id} ({reason})")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"report_user error: {e}")

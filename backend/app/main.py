@@ -42,4 +42,4 @@ fastapi_app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Wrap FastAPI with Socket.IO ASGI App
 # This allows Socket.IO to handle /socket.io/ requests and pass the rest to FastAPI
-app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
+socket_app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)

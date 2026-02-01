@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 HF_API_KEY = settings.HUGGINGFACE_API_KEY
 HF_MODEL_URL = settings.HUGGINGFACE_MODEL_URL
 
+
 async def verify_gender_from_bytes(image_bytes: bytes) -> Dict[str, Any]:
     """
     Sends image bytes to Hugging Face API for gender classification.
