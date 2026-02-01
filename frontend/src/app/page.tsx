@@ -1,3 +1,5 @@
+'use client';
+
 import DeviceIdDisplay from "@/components/DeviceIdDisplay";
 import CameraCapture from "@/components/CameraCapture";
 
@@ -8,8 +10,8 @@ export default function Home() {
         <h1 className="text-2xl font-bold">Klymo</h1>
         <DeviceIdDisplay />
 
-        <div className="w-full">
-          <h2 className="text-lg font-semibold mb-4 text-center">User Verification</h2>
+        <div className="w-full border-2 border-red-500 p-4 rounded-lg">
+          <h2 className="text-lg font-semibold mb-4 text-center text-red-500">DEBUG: User Verification Section</h2>
           <CameraCapture onCapture={(img) => console.log("Captured:", img.slice(0, 50) + "...")} />
         </div>
 

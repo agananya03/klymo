@@ -1,45 +1,47 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { generateDeviceId } from '@/utils/device-id';
 
-interface CameraCaptureProps {
-    onCapture?: (imageData: string) => void;
-    width?: number;
-    height?: number;
-}
-
-export default function CameraCapture({
-    onCapture,
-    width = 640,
-    height = 480
-}: CameraCaptureProps) {
+export default function CameraCapture() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isStreaming, setIsStreaming] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [capturedImage, setCapturedImage] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [verificationStatus, setVerificationStatus] = useState<'idle' | 'success' | 'failed'>('idle');
+    const [verificationMessage, setVerificationMessage] = useState<string>('');
 
     const startCamera = async () => {
-        console.log("Starting camera...");
+        setIsLoading(true);
+        setError(null);
+        setVerificationStatus('idle');
+        setVerificationMessage('');
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setError("Camera API is not supported in this browser");
+            setIsLoading(false);
+            return;
+        }
+
         try {
-            setError(null);
-            console.log("Requesting user media...");
+            // Strict constraint for user-facing camera
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user' }
+                video: { facingMode: 'user', width: 640, height: 480 }
             });
-            console.log("Stream acquired:", stream);
 
             if (videoRef.current) {
-                console.log("Setting video srcObject");
                 videoRef.current.srcObject = stream;
-                videoRef.current.play();
-                setIsStreaming(true);
-            } else {
-                console.error("Video ref is null");
+                videoRef.current.onloadedmetadata = () => {
+                    videoRef.current?.play().catch(e => console.error("Play error:", e));
+                    setIsStreaming(true);
+                    setIsLoading(false);
+                };
             }
         } catch (err) {
             console.error("Error accessing camera:", err);
-            setError("Could not access camera. Please ensure permissions are granted.");
+            setError(`Camera access denied. Please allow permissions to verify.`);
+            setIsLoading(false);
         }
     };
 
@@ -53,112 +55,151 @@ export default function CameraCapture({
         }
     }, []);
 
-    const takePhoto = useCallback(() => {
-        const video = videoRef.current;
+    const captureAndVerify = async () => {
+        if (!videoRef.current || !canvasRef.current) return;
+
+        setIsLoading(true);
         const canvas = canvasRef.current;
+        const video = videoRef.current;
 
-        if (video && canvas) {
-            const context = canvas.getContext('2d');
-            if (context) {
-                // Match canvas size to video size
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
 
-                // Draw video frame to canvas
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                // Get base64 string
-                const dataUrl = canvas.toDataURL('image/jpeg');
-                setCapturedImage(dataUrl);
-
-                if (onCapture) {
-                    onCapture(dataUrl);
-                }
-            }
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            setError("Internal error: Canvas context missing");
+            setIsLoading(false);
+            return;
         }
-    }, [onCapture]);
 
-    const retake = () => {
-        setCapturedImage(null);
-        startCamera();
+        // Draw current frame
+        ctx.drawImage(video, 0, 0);
+
+        // Convert to Blob (JPEG 92%)
+        canvas.toBlob(async (blob) => {
+            if (!blob) {
+                setError("Failed to capture image");
+                setIsLoading(false);
+                return;
+            }
+
+            // Immediately stop camera privacy rule
+            stopCamera();
+
+            try {
+                const deviceId = await generateDeviceId();
+                console.log("Starting verification request..."); // Force HMR update
+                const formData = new FormData();
+                formData.append('file', blob, 'capture.jpg');
+                formData.append('device_id', deviceId);
+
+                // Use relative path to leverage Next.js proxy
+                const response = await fetch('/api/v1/verification/verify-gender', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.detail || 'Verification failed');
+                }
+
+                setVerificationStatus('success');
+                setVerificationMessage(`Verified as ${result.gender} (${(result.confidence * 100).toFixed(1)}%)`);
+            } catch (err) {
+                console.error("Verification error:", err);
+                setVerificationStatus('failed');
+                setVerificationMessage(err instanceof Error ? err.message : "Verification failed");
+                // Allow retrying
+            } finally {
+                setIsLoading(false);
+            }
+
+        }, 'image/jpeg', 0.92);
     };
 
-    // Clean up on unmount
+    // Cleanup
     useEffect(() => {
-        return () => {
-            stopCamera();
-        };
+        return () => stopCamera();
     }, [stopCamera]);
 
     return (
-        <div className="flex flex-col items-center gap-4 p-4 border rounded-lg shadow-md max-w-md mx-auto bg-white dark:bg-gray-800">
-            <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-                {!isStreaming && !capturedImage && !error && (
-                    <div className="absolute inset-0 flex items-center justify-center text-white">
-                        <button
-                            onClick={startCamera}
-                            className="px-4 py-2 bg-blue-600 rounded-md hover:bg-blue-700 transition"
-                        >
-                            Start Camera
-                        </button>
+        <div className="flex flex-col items-center gap-6 p-6 border rounded-xl shadow-lg max-w-lg mx-auto bg-white dark:bg-gray-800 transition-all">
+            <h3 className="text-xl font-bold text-gray-800 dark:text-white">
+                Identity Verification
+            </h3>
+
+            <div className={`relative w-full aspect-video bg-black rounded-lg overflow-hidden border-2 ${verificationStatus === 'success' ? 'border-green-500' :
+                verificationStatus === 'failed' ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'
+                }`}>
+
+                {/* Initial State / Messages */}
+                {!isStreaming && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-10 bg-black/80 text-white">
+                        {verificationStatus === 'success' ? (
+                            <div className="text-green-400">
+                                <span className="text-4xl">✓</span>
+                                <p className="mt-2 font-semibold">{verificationMessage}</p>
+                                <p className="text-sm opacity-75 mt-1">Image discarded for privacy.</p>
+                            </div>
+                        ) : verificationStatus === 'failed' ? (
+                            <div className="text-red-400">
+                                <span className="text-4xl">⚠</span>
+                                <p className="mt-2 font-semibold">{verificationMessage}</p>
+                                <button
+                                    onClick={startCamera}
+                                    className="mt-4 px-4 py-2 bg-white text-red-600 rounded-full text-sm font-bold hover:bg-gray-200"
+                                >
+                                    Try Again
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <p className="text-sm opacity-90 max-w-xs mx-auto">
+                                    Instant camera-only verification. No uploads allowed.
+                                    Images are processed in memory and immediately deleted.
+                                </p>
+                                <button
+                                    onClick={startCamera}
+                                    disabled={isLoading}
+                                    className="px-6 py-3 bg-blue-600 rounded-full font-bold hover:bg-blue-700 transition disabled:opacity-50"
+                                >
+                                    {isLoading ? 'Starting...' : 'Enable Camera'}
+                                </button>
+                            </div>
+                        )}
+
+                        {error && (
+                            <p className="mt-4 text-red-500 bg-black/90 px-3 py-1 rounded">{error}</p>
+                        )}
                     </div>
                 )}
 
-                {error && (
-                    <div className="absolute inset-0 flex items-center justify-center text-red-500 p-4 text-center">
-                        {error}
-                    </div>
-                )}
-
-                {/* Video Preview */}
                 <video
                     ref={videoRef}
-                    className={`w-full h-full object-cover ${capturedImage ? 'hidden' : 'block'}`}
+                    className="w-full h-full object-cover"
                     playsInline
                     muted
                     autoPlay
                 />
-
-                {/* Captured Image Preview */}
-                {capturedImage && (
-                    <img
-                        src={capturedImage}
-                        alt="Captured"
-                        className="w-full h-full object-cover"
-                    />
-                )}
             </div>
 
-            <div className="flex gap-4">
-                {isStreaming && !capturedImage && (
+            {isStreaming && (
+                <div className="flex flex-col items-center gap-3 w-full">
                     <button
-                        onClick={takePhoto}
-                        className="px-6 py-2 bg-green-600 text-white rounded-full font-bold hover:bg-green-700 shadow-lg transition transform active:scale-95"
+                        onClick={captureAndVerify}
+                        disabled={isLoading}
+                        className="w-full px-6 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 shadow-lg transition transform active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        Capture
+                        {isLoading ? 'Verifying...' : 'Verify Identity'}
                     </button>
-                )}
+                    <p className="text-xs text-gray-400">
+                        By verifying, you confirm this is your real photo.
+                    </p>
+                </div>
+            )}
 
-                {capturedImage && (
-                    <button
-                        onClick={retake}
-                        className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition"
-                    >
-                        Retake
-                    </button>
-                )}
-
-                {isStreaming && (
-                    <button
-                        onClick={stopCamera}
-                        className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition"
-                    >
-                        Stop
-                    </button>
-                )}
-            </div>
-
-            {/* Hidden canvas for capturing */}
             <canvas ref={canvasRef} className="hidden" />
         </div>
     );

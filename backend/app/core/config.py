@@ -16,8 +16,12 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
-    REDIS_PASSWORD: Union[str, None] = None
 
-    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
+    REDIS_PASSWORD: Union[str, None] = None
+    
+    # AI Keys
+    HUGGINGFACE_API_KEY: Union[str, None] = None
+
+    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env", extra="ignore")
 
 settings = Settings()
