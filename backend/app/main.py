@@ -1,45 +1,56 @@
-import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+
 from contextlib import asynccontextmanager
 from app.core.redis_client import redis_client
 from app.core.socket_server import sio
-# Import events to register handlers
-import app.websocket.events 
+import socketio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     redis_client.connect()
     yield
-    # Shutdown
     redis_client.close()
 
-fastapi_app = FastAPI(
+app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan
 )
 
-# Set all CORS enabled origins
-if settings.BACKEND_CORS_ORIGINS:
-    fastapi_app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error", 
+            "error": str(exc),
+            "trace": traceback.format_exc().splitlines()[-1]
+        },
     )
 
-@fastapi_app.get("/")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
 def read_root():
     return {"message": "Welcome to FastAPI Backend"}
 
-# Import and include router here when ready
 from app.api.v1.api import api_router
-fastapi_app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Wrap FastAPI with Socket.IO ASGI App
 # This allows Socket.IO to handle /socket.io/ requests and pass the rest to FastAPI
-socket_app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)

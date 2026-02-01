@@ -11,6 +11,11 @@ class RedisClient:
         self.match_script = None
 
     def connect(self):
+        if not settings.REDIS_ENABLED:
+            logging.info("Redis disabled in settings. Caching will be skipped.")
+            self.client = None
+            return
+
         try:
             self.pool = redis.ConnectionPool(
                 host=settings.REDIS_HOST,

@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { generateDeviceId } from '@/utils/device-id';
 
 interface CameraCaptureProps {
-    onCapture?: (blobSize: string) => void;
+    onCapture?: (imageUrl: string) => void;
 }
 
 export default function CameraCapture({ onCapture }: CameraCaptureProps) {
@@ -103,32 +103,26 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
                     body: formData,
                 });
 
-                // Defensive error handling
+                const responseText = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (e) {
+                    console.error("Non-JSON response received:", responseText);
+                    throw new Error(`Server returned an error (${response.status}). The backend might be misconfigured.`);
+                }
+
                 if (!response.ok) {
-                    const contentType = response.headers.get('content-type');
-                    if (contentType && contentType.includes('application/json')) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.detail || `Server error (${response.status})`);
-                    } else {
-                        const errorText = await response.text();
-                        console.error("Backend error (non-JSON):", errorText);
-                        throw new Error(`Server returned an error (${response.status}). The backend might be misconfigured.`);
-                    }
+                    throw new Error(result.detail || result.error || `Server error (${response.status})`);
                 }
-
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    throw new Error("Invalid response from server: Expected JSON but received something else.");
-                }
-
-                const result = await response.json();
 
                 setVerificationStatus('success');
                 setVerificationMessage(`Verified as ${result.gender} (${(result.confidence * 100).toFixed(1)}%)`);
 
                 // Trigger parent callback after short delay for UX
                 if (onCapture) {
-                    setTimeout(() => onCapture(blob.size.toString()), 1500);
+                    // Pass the detected gender to the parent
+                    setTimeout(() => onCapture(result.gender), 1500);
                 }
             } catch (err) {
                 console.error("Verification error:", err);
