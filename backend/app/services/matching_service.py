@@ -15,7 +15,7 @@ class MatchingService:
     LIMIT_PREFIX = "limit:match:"
     
     COOLDOWN_SECONDS = 30  # Prevent spam re-queuing
-    DAILY_LIMIT = 50       # Freemium limit simulation
+    DAILY_LIMIT = 5        # Freemium limit simulation
 
     def __init__(self):
         self.redis = redis_client.get_client()
@@ -71,9 +71,9 @@ class MatchingService:
         if wait_time > 0:
             return {"status": "cooldown", "wait": wait_time}
 
-        # 2. Daily Limit Check
-        if self._check_daily_limit(user_id):
-            return {"status": "limit_reached", "message": "Daily matching limit reached"}
+        # 2. Daily Limit Check (Only for specific filters)
+        if preference != "any" and self._check_daily_limit(user_id):
+            return {"status": "limit_reached", "message": "Daily limit for filtered matches reached (5/day). Try 'Any' to keep matching!"}
 
         # 3. Determine Search Queues (Where do I look?)
         # - If I want Male: Look in Male Queue (contains Males) and Any Queue (contains people of any gender with Any pref)
@@ -127,8 +127,16 @@ class MatchingService:
                     sorted_ids = sorted([user_id, c_id])
                     session_id = f"session_{sorted_ids[0]}_{sorted_ids[1]}_{int(time.time())}"
                     
-                    self._increment_daily_limit(user_id)
-                    self._increment_daily_limit(c_id)
+                    # Only increment limit if specific preference was used
+                    if preference != "any":
+                        self._increment_daily_limit(user_id)
+                    
+                    # For partner, we don't know their preference here easily without checking.
+                    # Ideally we should decrement their limit if *they* had a preference.
+                    # But the candidate object has 'preference'.
+                    if c_pref != "any":
+                        self._increment_daily_limit(c_id)
+
                     self._set_cooldown(user_id)
                     self._set_cooldown(c_id)
                     

@@ -108,10 +108,14 @@ async def join_queue(sid, data):
             await sio.emit('match_found', partner_payload, room=f"user_{partner_id}")
             
         elif result['status'] == 'queued':
-            await sio.emit('queue_status', {'status': 'queued', 'message': 'Waiting for match...'}, room=sid)
+            await sio.emit('match_queued', {'message': result['message']}, room=sid)
+
+        elif result['status'] == 'limit_reached':
+            # Send error or special limit event
+            await sio.emit('error', {'message': result['message']}, room=sid)
             
         elif result['status'] == 'cooldown':
-            await sio.emit('error', {'message': f"Cooldown: Wait {result.get('wait')}s"}, room=sid)
+            await sio.emit('error', {'message': f"Please wait {result['wait']}s before matching again."}, room=sid)
 
     except Exception as e:
         print(f"DEBUG: Join Queue Error: {e}")
