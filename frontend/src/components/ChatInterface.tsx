@@ -29,6 +29,7 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
     const [myId, setMyId] = useState<string>('');
     const myIdRef = useRef<string>(''); // Ref for sync access in listener
     const [partnerLeft, setPartnerLeft] = useState(false);
+    const [showReportModal, setShowReportModal] = useState(false);
 
     // Auto-scroll ref
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -145,26 +146,28 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
     // Also clear on "Next Match" (handled by parent onNext usually, but good to clean here OR parent)
     // We'll wrap onNext to clear storage
     const handleNext = () => {
+        if (!partnerLeft) {
+            const socket = getSocket();
+            socket.emit('leave_chat', { session_id: sessionData.session_id });
+        }
         sessionStorage.removeItem(`chat_${sessionData.session_id}`);
         onNext();
     };
 
-    const handleReport = () => {
-        const reason = prompt("Why are you reporting this user?");
-        if (reason) {
-            const socket = getSocket();
-            socket.emit('report_user', {
-                session_id: sessionData.session_id,
-                reason: reason,
-                reported_device_id: sessionData.partner_id
-            });
-            alert("Report submitted.");
-            handleLeave();
-        }
+    const handleReport = (reason: string) => {
+        const socket = getSocket();
+        socket.emit('report_user', {
+            session_id: sessionData.session_id,
+            reason: reason,
+            reported_device_id: sessionData.partner_id
+        });
+        setShowReportModal(false);
+        alert("Report submitted."); // Optional feedback
+        handleLeave();
     };
 
     return (
-        <div className="w-full max-w-lg h-[90vh] md:h-[600px] flex flex-col bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-300">
+        <div className="w-full max-w-2xl h-[90vh] md:h-[700px] flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-300">
             {/* Header */}
             <div className="p-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                 <div>
@@ -175,15 +178,36 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                     <p className="text-xs text-gray-400">Encrypted • Ephemeral</p>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={handleReport} className="text-gray-400 hover:text-red-500 transition" title="Report">
-                        🚩
+                    <button
+                        onClick={() => setShowReportModal(true)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                        title="Report User"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                        </svg>
                     </button>
-                    <button onClick={handleLeave} className="text-gray-400 hover:text-red-500 transition font-bold" title="Leave">
-                        ✕
+                    <button
+                        onClick={handleNext}
+                        className="p-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition font-bold flex items-center gap-1"
+                        title="Next Match"
+                    >
+                        <span>Next</span>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                    </button>
+                    <button
+                        onClick={handleLeave}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                        title="Leave Chat"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                     </button>
                 </div>
             </div>
-
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-100 dark:bg-gray-950/50">
                 {/* System Message */}
@@ -241,6 +265,43 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                     ➤
                 </button>
             </form>
-        </div>
+
+            {/* Report Modal */}
+            {
+                showReportModal && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 animate-in fade-in duration-200">
+                        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-4 duration-300">
+                            <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Report User</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                                Why are you reporting this user? This helps us maintain a safe community.
+                            </p>
+                            <div className="space-y-2 mb-6">
+                                {[
+                                    'Inappropriate behavior',
+                                    'Harassment or bullying',
+                                    'Spam or scam',
+                                    'Offensive language',
+                                    'Other'
+                                ].map((reason) => (
+                                    <button
+                                        key={reason}
+                                        onClick={() => handleReport(reason)}
+                                        className="w-full p-3 text-left rounded-lg bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+                                    >
+                                        {reason}
+                                    </button>
+                                ))}
+                            </div>
+                            <button
+                                onClick={() => setShowReportModal(false)}
+                                className="w-full p-3 bg-gray-200 dark:bg-gray-700 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 }
