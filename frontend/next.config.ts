@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://backend:8000/api/:path*', // Proxy to Backend container
+        destination: 'http://127.0.0.1:8000/api/:path*', // Proxy to local Uvicorn
       },
     ];
   },

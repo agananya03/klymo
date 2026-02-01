@@ -19,6 +19,23 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error", 
+            "error": str(exc),
+            "trace": traceback.format_exc().splitlines()[-1]
+        },
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

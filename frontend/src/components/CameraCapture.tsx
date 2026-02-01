@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { generateDeviceId } from '@/utils/device-id';
 
 interface CameraCaptureProps {
-    onCapture?: (blobSize: string) => void;
+    onCapture?: (imageUrl: string) => void;
 }
 
 export default function CameraCapture({ onCapture }: CameraCaptureProps) {
@@ -98,17 +98,25 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
                     body: formData,
                 });
 
-                const result = await response.json();
+                const responseText = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (e) {
+                    console.error("Non-JSON response received:", responseText);
+                    throw new Error(`Server Error: ${responseText.substring(0, 100)}...`);
+                }
 
                 if (!response.ok) {
-                    throw new Error(result.detail || 'Verification failed');
+                    throw new Error(result.detail || result.error || 'Verification failed');
                 }
 
                 setVerificationStatus('success');
                 setVerificationMessage(`Verified as ${result.gender} (${(result.confidence * 100).toFixed(1)}%)`);
 
                 if (onCapture) {
-                    setTimeout(() => onCapture(blob.size.toString()), 1500);
+                    // Pass the detected gender to the parent
+                    setTimeout(() => onCapture(result.gender), 1500);
                 }
             } catch (err) {
                 console.error("Verification error:", err);

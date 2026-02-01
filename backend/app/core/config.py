@@ -7,12 +7,13 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # Database
-    DATABASE_URL: str
+    DATABASE_URL: str = "sqlite:///./app.db"
 
     # CORS
-    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
+    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = ["http://localhost:3000"]
 
     # Redis
+    REDIS_ENABLED: bool = False
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
@@ -22,6 +23,11 @@ class Settings(BaseSettings):
     HUGGINGFACE_API_KEY: Union[str, None] = None
     HUGGINGFACE_MODEL_URL: Union[str, None] = None
 
-    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env", extra="ignore")
+    @property
+    def model_id(self) -> str:
+        # Using a reliable gender classification model
+        return "rizvandwiki/gender-classification"
+
+    model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
 
 settings = Settings()

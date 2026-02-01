@@ -7,9 +7,10 @@ interface ProfileFormProps {
     onProfileComplete: () => void;
 }
 
-export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
+export default function ProfileForm({ onProfileComplete }: { onProfileComplete: (pref: string) => void }) {
     const [nickname, setNickname] = useState('');
     const [bio, setBio] = useState('');
+    const [preference, setPreference] = useState('any');
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
     const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -26,6 +27,7 @@ export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
                     const data = await res.json();
                     if (data.nickname) setNickname(data.nickname);
                     if (data.bio) setBio(data.bio);
+                    if (data.preference) setPreference(data.preference);
                 }
             } catch (err) {
                 console.error("Failed to load profile", err);
@@ -48,14 +50,15 @@ export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
                 body: JSON.stringify({
                     device_id: deviceId,
                     nickname: nickname.trim(),
-                    bio: bio.trim()
+                    bio: bio.trim(),
+                    preference: preference
                 }),
             });
 
             if (!res.ok) throw new Error('Failed to save profile');
 
             setStatus('Profile saved successfully!');
-            setTimeout(onProfileComplete, 1000); // Proceed after delay
+            setTimeout(() => onProfileComplete(preference), 1000); // Proceed after delay
         } catch (err) {
             setStatus('Error saving profile. Please try again.');
             console.error(err);
@@ -76,6 +79,7 @@ export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
 
             setNickname('');
             setBio('');
+            setPreference('any');
             setStatus('Profile data cleared.');
         } catch (err) {
             setStatus('Error clearing data.');
@@ -88,7 +92,7 @@ export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
         <div className="w-full max-w-md p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-gray-100">Setup Profile</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                Your nickname is temporary. No profile pictures are allowed for privacy.
+                Your nickname is temporary. No profile pictures allowed.
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -98,11 +102,24 @@ export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
                         type="text"
                         value={nickname}
                         onChange={(e) => setNickname(e.target.value)}
-                        placeholder="e.g. MysteryWalker"
+                        placeholder="MysteryWalker"
                         maxLength={50}
                         required
                         className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition"
                     />
+                </div>
+
+                <div>
+                    <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Looking For</label>
+                    <select
+                        value={preference}
+                        onChange={(e) => setPreference(e.target.value)}
+                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                    >
+                        <option value="any">Any Gender</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
                 </div>
 
                 <div>
@@ -137,7 +154,6 @@ export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
                             onClick={handleClear}
                             disabled={isLoading}
                             className="px-4 py-3 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
-                            title="Clear Profile Data"
                         >
                             Clear
                         </button>
