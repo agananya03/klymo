@@ -1,30 +1,39 @@
-from huggingface_hub import AsyncInferenceClient
+import httpx
 from app.core.config import settings
 import logging
 
 class FaceDetectionService:
     async def detect_gender(self, image_bytes: bytes):
-        print(f"DEBUG: API_KEY={settings.HUGGINGFACE_API_KEY[:4]}... Model={settings.model_id}")
+        api_key = settings.HUGGINGFACE_API_KEY
+        model_id = settings.model_id
         
-        if not settings.HUGGINGFACE_API_KEY or not settings.model_id:
+        if not api_key or not model_id:
             logging.error("Hugging Face API key or Model ID not configured.")
             return {"error": "Configuration missing"}
 
         try:
-            client = AsyncInferenceClient(token=settings.HUGGINGFACE_API_KEY)
-            # image_classification returns a list of objects
-            result = await client.image_classification(image_bytes, model=settings.model_id)
+            url = f"https://api-inference.huggingface.co/models/{model_id}"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "image/jpeg"
+            }
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url, headers=headers, content=image_bytes)
+                if response.status_code != 200:
+                    return {"error": f"API request failed with status {response.status_code}: {response.text}"}
+                result = response.json()
             
             # Convert to dict for frontend compatibility
             parsed_result = []
             if isinstance(result, list):
                 for item in result:
                     parsed_result.append({
-                        "label": getattr(item, 'label', None) or item.get('label'),
-                        "score": getattr(item, 'score', None) or item.get('score')
+                        "label": item.get('label'),
+                        "score": item.get('score')
                     })
             else:
-                 parsed_result = result # Should not happen usually
+                 parsed_result = result
             
             return parsed_result
 

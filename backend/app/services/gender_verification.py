@@ -1,54 +1,61 @@
+import httpx
 import logging
 from typing import Dict, Any, List
-from huggingface_hub import InferenceClient
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 async def verify_gender_from_bytes(image_bytes: bytes) -> List[Dict[str, Any]]:
     """
-    Sends image bytes to Hugging Face API for gender classification using InferenceClient.
-    Returns the list of labels and scores.
+    Sends image bytes to Hugging Face API for gender classification.
+    Uses httpx directly to ensure correct headers (Content-Type).
     """
     api_key = settings.HUGGINGFACE_API_KEY
-    model_id = settings.model_id
+    model_url = settings.HUGGINGFACE_MODEL_URL
+    
+    # Fallback to default if URL not provided
+    if not model_url or not model_url.startswith("http"):
+        model_id = settings.model_id
+        model_url = f"https://api-inference.huggingface.co/models/{model_id}"
     
     if not api_key:
         logger.warning("No Hugging Face API Key found in settings.")
 
     try:
-        client = InferenceClient(token=api_key)
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "image/jpeg"
+        }
         
-        # image_classification returns a list of ImageClassificationOutput objects or dicts
-        # We need to ensure we run this in a way that doesn't block if it's sync, 
-        # but InferenceClient has async support via AsyncInferenceClient or we run it in thread pool if needed.
-        # However, standard InferenceClient is sync. 
-        # For FastAPI, it's better to use AsyncInferenceClient or run in executor.
-        # Let's use the synchronous client in a thread for simplicity unless AsyncInferenceClient is available and easy.
-        # Actually, huggingface_hub has AsyncInferenceClient. Let's try to import it, but to be safe/compatible 
-        # with the installed version (0.35.3), it definitely supports it.
+        logger.info(f"Calling HF Inference: {model_url}")
         
-        from huggingface_hub import AsyncInferenceClient
-        async_client = AsyncInferenceClient(token=api_key)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(model_url, headers=headers, content=image_bytes)
+            
+            if response.status_code != 200:
+                error_msg = response.text
+                logger.error(f"HF API Error ({response.status_code}): {error_msg}")
+                raise ValueError(f"AI Service Error: {error_msg}")
+            
+            result = response.json()
         
-        logger.info(f"Calling HF Inference with model: {model_id}")
-        result = await async_client.image_classification(image_bytes, model=model_id)
-        
-        # Result is likely a list of objects with 'label' and 'score' attributes.
-        # We need to convert it to a list of dicts for the rest of the app to consume easily.
+        # Parse result: HF usually returns a list of classification objects
+        # e.g. [{"label": "female", "score": 0.99}, {"label": "male", "score": 0.01}]
         parsed_result = []
         if isinstance(result, list):
             for item in result:
-                # Check if item is an object or dict
-                label = getattr(item, 'label', None) or item.get('label')
-                score = getattr(item, 'score', None) or item.get('score')
-                parsed_result.append({"label": label, "score": score})
-        else:
-             logger.error(f"Unexpected result format: {result}")
-             raise ValueError("AI Service returned unexpected data format")
+                label = item.get('label')
+                score = item.get('score')
+                if label is not None and score is not None:
+                    parsed_result.append({"label": label, "score": score})
+        
+        if not parsed_result:
+            logger.error(f"Could not parse HF result: {result}")
+            raise ValueError("AI Service returned unexpected data format")
 
         return parsed_result
 
     except Exception as e:
+        if isinstance(e, ValueError): raise e
         logger.error(f"Error calling HF API: {e}")
         raise ValueError(f"AI Service Error: {str(e)}")

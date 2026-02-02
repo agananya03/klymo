@@ -1,7 +1,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Body
 from pydantic import BaseModel
-from app.services.matching_service import mapping_service
+from app.services.matching_service import MatchingService
+from app.core.database import SessionLocal
 
 router = APIRouter()
 
@@ -41,11 +42,15 @@ async def find_match(request: MatchRequest):
     Attempt to find a chat partner.
     Returns session_id if matched, or queued status.
     """
-    result = mapping_service.find_match(
-        user_id=request.user_id,
-        gender=request.gender,
-        preference=request.preference
-    )
+    db = SessionLocal()
+    try:
+        result = MatchingService.join_queue(
+            db=db,
+            device_id=request.user_id,
+            preference=request.preference
+        )
+    finally:
+        db.close()
     
     if result.get("status") == "error":
         raise HTTPException(status_code=500, detail=result.get("message"))
