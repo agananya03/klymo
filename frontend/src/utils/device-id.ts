@@ -43,35 +43,13 @@ export async function generateDeviceId(): Promise<string> {
     return storedId;
   }
 
-  // 2. Initialize FingerprintJS
-  const fp = await FingerprintJS.load();
-  const result = await fp.get();
-  
-  // 3. Collect entropy sources
-  const entropy = {
-    visitorId: result.visitorId,
-    language: navigator.language,
-    screenWidth: screen.width,
-    screenHeight: screen.height,
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    userAgent: navigator.userAgent,
-  };
+  // 2. Generate a fresh Random UUID
+  // This ensures new sessions (Incognito) get a unique ID
+  const deviceId = crypto.randomUUID();
 
-  // 4. Create a consistent string from entropy
-  // Sorting keys to ensure consistency regardless of object property order
-  const entropyString = Object.keys(entropy)
-    .sort()
-    .map((key) => `${key}:${entropy[key as keyof typeof entropy]}`)
-    .join('|');
-
-  console.log('Entropy string for hashing:', entropyString);
-
-  // 5. Hash the combined string
-  const deviceId = await hashString(entropyString);
-
-  // 6. Store in IndexedDB
+  // 3. Store in IndexedDB
   await storeDeviceId(deviceId);
-  console.log('New Device ID generated and stored:', deviceId);
+  console.log('New Random Device ID generated and stored:', deviceId);
 
   return deviceId;
 }

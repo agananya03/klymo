@@ -44,6 +44,12 @@ class RedisClient:
             self.pool.disconnect()
             logging.info("Redis connection closed")
 
+    def get_client(self) -> Optional[redis.Redis]:
+        if not self.client:
+            self.connect()
+        return self.client
+
+
     def _register_scripts(self):
         if not self.client:
             return
@@ -109,7 +115,7 @@ class RedisClient:
         items = self.client.lrange(queue_key, 0, -1)
         for item in items:
             data = json.loads(item)
-            if data['device_id'] == device_id:
+            if data['user_id'] == device_id:
                 self.client.lrem(queue_key, 1, item)
                 return True
         return False

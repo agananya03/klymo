@@ -4,23 +4,30 @@ from datetime import datetime
 from app.core.socket_server import sio
 from app.core.database import SessionLocal
 from app.models.sql_models import User, Session, Report
-from app.services.matching_service import MatchingService
+from app.services.matching_service import mapping_service
 from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
 @sio.event
 async def connect(sid, environ, auth):
-    """
-    Handle connection. 
-    Auth expectation: { 'device_id': '...' }
-    """
+    print(f"DEBUG: Connect Event {sid}")
     device_id = None
+    
+    # 1. Try to get device_id from auth (standard way)
     if auth and 'device_id' in auth:
         device_id = auth['device_id']
+    
+    # 2. Fallback to query string (for debugging or older clients)
+    if not device_id:
+        from urllib.parse import parse_qs
+        query_string = environ.get('QUERY_STRING', '')
+        params = parse_qs(query_string)
+        if 'device_id' in params:
+            device_id = params['device_id'][0]
 
     if not device_id:
-        logger.warning("Connection rejected: No device_id provided")
+        logger.warning(f"Connection rejected: No device_id provided (sid: {sid})")
         return False 
 
     db = SessionLocal()
@@ -51,7 +58,7 @@ async def disconnect(sid):
         
         if device_id:
             logger.info(f"👋 Disconnected: {device_id}")
-            MatchingService.leave_queue(device_id)
+            mapping_service.leave_queue(device_id)
     except Exception as e:
         logger.error(f"Disconnect error: {e}")
 
@@ -73,34 +80,29 @@ async def join_queue(sid, data):
         
         db = SessionLocal()
         try:
-            me = db.query(User).filter(User.device_id == device_id).first()
-            if not me:
-                await sio.emit('error', {'message': 'User not found'}, room=sid)
-                return
-            
-            result = MatchingService.join_queue(db, device_id, preference)
+            result = mapping_service.join_queue(db, device_id, preference)
             
             if result['status'] == 'matched':
                 session_id = result['session_id']
                 partner_data = result['partner']
                 partner_id = partner_data['device_id']
                 
-                logger.info(f"🎉 Match! {device_id} <-> {partner_id} (session: {session_id})")
+                logger.info(f"🎉 Match फाउंड! {device_id} <-> {partner_id} (session: {session_id})")
                 
                 # Payloads for both users
                 match_payload_me = {
                     'session_id': session_id,
-                    'partner': {
-                        'device_id': partner_id,
-                        'nickname': partner_data.get('nickname', 'Stranger')
-                    }
+                    'partner': partner_data
                 }
                 
+                # Fetch my details for partner
+                me = db.query(User).filter(User.device_id == device_id).first()
                 match_payload_partner = {
                     'session_id': session_id,
                     'partner': {
                         'device_id': device_id,
-                        'nickname': me.nickname if me.nickname else 'Stranger'
+                        'nickname': me.nickname if me.nickname else 'Stranger',
+                        'gender': me.gender
                     }
                 }
                 
@@ -108,9 +110,18 @@ async def join_queue(sid, data):
                 await sio.emit('match_found', match_payload_me, room=f"user_{device_id}")
                 await sio.emit('match_found', match_payload_partner, room=f"user_{partner_id}")
                 
-            else:
+            elif result['status'] == 'queued':
                 await sio.emit('queue_status', {'status': 'queued'}, room=sid)
                 logger.info(f"⏳ Queued: {device_id} (seeking {preference})")
+            
+            elif result['status'] == 'cooldown':
+                await sio.emit('error', {'message': f"Please wait {result['wait']}s before matching again."}, room=sid)
+            
+            elif result['status'] == 'limit_reached':
+                await sio.emit('error', {'message': result['message']}, room=sid)
+
+            else:
+                await sio.emit('error', {'message': result.get('message', 'Unknown error')}, room=sid)
 
         except Exception as e:
             logger.error(f"join_queue error: {e}", exc_info=True)
@@ -122,10 +133,29 @@ async def join_queue(sid, data):
         logger.error(f"join_queue handler error: {e}", exc_info=True)
 
 @sio.event
+async def join_session(sid, data):
+    """
+    Client joins the socket room for a specific session.
+    """
+    session_id = data.get('session_id')
+    if not session_id:
+        return
+    
+    async with sio.session(sid) as user_session:
+        device_id = user_session.get('device_id')
+    
+    if not device_id:
+        return
+
+    # Optional: Verify user belongs to session in DB before allowing room entry
+    await sio.enter_room(sid, session_id)
+    logger.info(f"User {device_id} joined session room {session_id}")
+
+@sio.event
 async def send_message(sid, data):
     """
     Send a message in a chat session.
-    Emits to BOTH users individually to avoid duplication.
+    Emits to BOTH users individually to avoid duplication and ensure delivery.
     """
     session_id = data.get('session_id')
     content = data.get('content')
@@ -158,7 +188,10 @@ async def send_message(sid, data):
                 'timestamp': datetime.utcnow().isoformat()
             }
             
-            # Emit ONLY to user rooms (each user in their own room)
+            # Emit to session room OR individually
+            # Emitting individually ensures we can track delivery if needed, 
+            # but room is simpler for basic relay. 
+            # HEAD preferred individual emits to avoid duplication issues in some clients.
             await sio.emit('new_message', response, room=f"user_{sess.user1_device_id}")
             await sio.emit('new_message', response, room=f"user_{sess.user2_device_id}")
             

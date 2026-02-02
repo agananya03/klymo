@@ -5,7 +5,14 @@ import { getSocket } from '@/utils/socket';
 import { generateDeviceId } from '@/utils/device-id';
 
 interface ChatInterfaceProps {
-    sessionData: any;
+    sessionData: {
+        session_id: string;
+        partner: {
+            device_id: string;
+            nickname?: string;
+            gender?: string;
+        };
+    };
     onLeave: () => void;
     onNext: () => void;
 }
@@ -22,6 +29,7 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [myId, setMyId] = useState<string>('');
+    const myIdRef = useRef<string>(''); // Ref for sync access in listener
     const [partnerLeft, setPartnerLeft] = useState(false);
     const [partnerTyping, setPartnerTyping] = useState(false);
     const [showReportModal, setShowReportModal] = useState(false);
@@ -35,11 +43,18 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
     const listenersRegistered = useRef(false);
 
     useEffect(() => {
+        const socket = getSocket();
+
+        // Focus input on mount
+        inputRef.current?.focus();
+
         const init = async () => {
             const id = await generateDeviceId();
             setMyId(id);
+            myIdRef.current = id;
 
-            const socket = getSocket();
+            // Join the room!
+            socket.emit('join_session', { session_id: sessionData.session_id });
 
             // IMPORTANT: Only register listeners once!
             if (listenersRegistered.current) {
@@ -50,12 +65,12 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             console.log('✅ Registering socket listeners');
             listenersRegistered.current = true;
 
-            // Handler functions (defined once)
+            // Handler functions
             const handleNewMessage = (data: any) => {
                 console.log('📨 Received message:', data);
                 setPartnerTyping(false);
                 setMessages((prev) => {
-                    // Prevent duplicates by checking if message already exists
+                    // Prevent duplicates
                     const exists = prev.some(m =>
                         m.sender_id === data.sender_id &&
                         m.content === data.content &&
@@ -72,7 +87,7 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                         sender_id: data.sender_id,
                         content: data.content,
                         timestamp: data.timestamp || new Date().toISOString(),
-                        isMe: data.sender_id === id
+                        isMe: data.sender_id === myIdRef.current
                     }];
                 });
             };
@@ -104,7 +119,7 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             socket.on('disconnect', handleDisconnect);
             socket.on('connect', handleConnect);
 
-            // Cleanup function
+            // Return cleanup
             return () => {
                 console.log('🧹 Cleaning up socket listeners');
                 socket.off('new_message', handleNewMessage);
@@ -115,6 +130,8 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                 listenersRegistered.current = false;
             };
         };
+
+        const cleanupPromise = init();
 
         // Load persisted messages
         const saved = sessionStorage.getItem(`chat_${sessionData.session_id}`);
@@ -128,10 +145,9 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             }
         }
 
-        init();
-
-        // Focus input on mount
-        inputRef.current?.focus();
+        return () => {
+            cleanupPromise.then(cleanup => cleanup?.());
+        };
     }, [sessionData.session_id]); // Only run when session_id changes
 
     // Auto-scroll
@@ -184,6 +200,10 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
     };
 
     const handleNext = () => {
+        if (!partnerLeft) {
+            const socket = getSocket();
+            socket.emit('leave_chat', { session_id: sessionData.session_id });
+        }
         sessionStorage.removeItem(`chat_${sessionData.session_id}`);
         onNext();
     };
@@ -228,6 +248,15 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                        </svg>
+                    </button>
+                    <button
+                        onClick={handleNext}
+                        className="p-2 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 rounded-lg transition font-bold"
+                        title="Next Match"
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                         </svg>
                     </button>
                     <button

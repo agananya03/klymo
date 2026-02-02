@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from app.core.redis_client import redis_client
 from app.core.socket_server import sio
 import socketio
+import app.websocket.events # Register Socket.IO Events
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
