@@ -81,30 +81,46 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
     };
 
     return (
-        <div className="flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500">
+        <div className="flex flex-col items-center justify-center space-y-12 animate-in fade-in duration-700 w-full py-10">
+            {/* Radar Animation */}
             <div className="relative">
-                <div className="w-24 h-24 bg-blue-500 rounded-full flex items-center justify-center animate-pulse">
-                    <span className="text-4xl">🔍</span>
+                <div className="w-32 h-32 bg-indigo-600/20 rounded-full flex items-center justify-center backdrop-blur-md border border-indigo-500/30 shadow-[0_0_40px_rgba(79,70,229,0.3)] z-10">
+                    <span className="text-5xl animate-bounce">🔭</span>
                 </div>
-                {/* Ripple effect */}
-                <span className="absolute top-0 left-0 w-24 h-24 bg-blue-500 rounded-full animate-ping opacity-25"></span>
+
+                {/* Ripples */}
+                <div className="absolute top-0 left-0 w-32 h-32 bg-indigo-500 rounded-full animate-[ping_2s_linear_infinite] opacity-20 -z-10"></div>
+                <div className="absolute top-0 left-0 w-32 h-32 bg-purple-500 rounded-full animate-[ping_2s_linear_infinite] opacity-20 animation-delay-500 -z-10"></div>
+
+                {/* Orbital dots */}
+                <div className="absolute inset-0 w-full h-full animate-[spin_4s_linear_infinite]">
+                    <div className="absolute top-0 left-1/2 w-2 h-2 bg-cyan-400 rounded-full shadow-[0_0_10px_cyan] -translate-x-1/2 -translate-y-4"></div>
+                </div>
+                <div className="absolute inset-0 w-full h-full animate-[spin_6s_linear_infinite_reverse]">
+                    <div className="absolute bottom-0 left-1/2 w-2 h-2 bg-pink-400 rounded-full shadow-[0_0_10px_magenta] -translate-x-1/2 translate-y-4"></div>
+                </div>
             </div>
 
-            <div className="text-center space-y-2">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{status}</h2>
-                <p className="text-gray-500 dark:text-gray-400">Finding someone compatible with you...</p>
+            <div className="text-center space-y-3">
+                <h2 className="text-3xl font-bold text-white tracking-wide drop-shadow-lg">{status}</h2>
+                <p className="text-indigo-200/60 font-light tracking-widest text-sm uppercase">Global Search Active</p>
             </div>
 
             {status === 'Select a preference' && (
-                <div className="flex gap-4">
-                    <button onClick={() => handleJoin('female')} className="px-6 py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-full font-semibold transition shadow-lg">
-                        Female
+                <div className="flex flex-wrap justify-center gap-6">
+                    <button onClick={() => handleJoin('female')} className="group relative px-8 py-4 bg-gray-900 rounded-full overflow-hidden transition-all hover:scale-105 active:scale-95 ring-1 ring-pink-500/50 hover:ring-pink-500">
+                        <div className="absolute inset-0 bg-pink-500/10 group-hover:bg-pink-500/20 transition-colors"></div>
+                        <span className="relative font-bold text-pink-400 group-hover:text-pink-300">Female</span>
                     </button>
-                    <button onClick={() => handleJoin('male')} className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-semibold transition shadow-lg">
-                        Male
+
+                    <button onClick={() => handleJoin('male')} className="group relative px-8 py-4 bg-gray-900 rounded-full overflow-hidden transition-all hover:scale-105 active:scale-95 ring-1 ring-blue-500/50 hover:ring-blue-500">
+                        <div className="absolute inset-0 bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors"></div>
+                        <span className="relative font-bold text-blue-400 group-hover:text-blue-300">Male</span>
                     </button>
-                    <button onClick={() => handleJoin('any')} className="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-full font-semibold transition shadow-lg">
-                        Anyone
+
+                    <button onClick={() => handleJoin('any')} className="group relative px-8 py-4 bg-gray-900 rounded-full overflow-hidden transition-all hover:scale-105 active:scale-95 ring-1 ring-purple-500/50 hover:ring-purple-500">
+                        <div className="absolute inset-0 bg-purple-500/10 group-hover:bg-purple-500/20 transition-colors"></div>
+                        <span className="relative font-bold text-purple-400 group-hover:text-purple-300">Anyone</span>
                     </button>
                 </div>
             )}
@@ -113,13 +129,19 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
             {status.startsWith('Searching') && (
                 <button
                     onClick={() => {
-                        window.location.reload(); // Simplest cancel for MVP
+                        window.location.reload();
                     }}
-                    className="text-red-500 hover:text-red-700 font-medium text-sm"
+                    className="mt-8 text-gray-400 hover:text-white font-medium text-xs uppercase tracking-widest border-b border-transparent hover:border-white transition-all pb-1"
                 >
-                    Cancel
+                    Cancel Search
                 </button>
             )}
+
+            <style jsx>{`
+                .animation-delay-500 {
+                    animation-delay: 0.5s;
+                }
+            `}</style>
         </div>
     );
 }

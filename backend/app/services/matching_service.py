@@ -14,7 +14,7 @@ class MatchingService:
     COOLDOWN_PREFIX = "cooldown:match:"
     LIMIT_PREFIX = "limit:match:"
     
-    COOLDOWN_SECONDS = 30  # Prevent spam re-queuing
+    COOLDOWN_SECONDS = 300  # Prevent spam re-queuing
     DAILY_LIMIT = 5        # Freemium limit simulation
 
     def __init__(self):
@@ -49,6 +49,30 @@ class MatchingService:
          key = f"{self.LIMIT_PREFIX}{today}:{user_id}"
          self.redis.incr(key)
          self.redis.expire(key, 86400) # 24 hours
+         
+         # Persist to SQL (Audit Trail)
+         from app.core.database import SessionLocal
+         from app.models.sql_models import DailyUsage
+         
+         db = SessionLocal()
+         try:
+             # Upsert logic (simplistic: try get, if not create, else update)
+             usage = db.query(DailyUsage).filter(
+                 DailyUsage.device_id == user_id, 
+                 DailyUsage.date == today
+             ).first()
+             
+             if not usage:
+                 usage = DailyUsage(device_id=user_id, date=today, specific_matches_count=1)
+                 db.add(usage)
+             else:
+                 usage.specific_matches_count += 1
+             
+             db.commit()
+         except Exception as e:
+             logger.error(f"Failed to update DailyUsage SQL: {e}")
+         finally:
+             db.close()
 
     def _set_cooldown(self, user_id: str):
         key = f"{self.COOLDOWN_PREFIX}{user_id}"

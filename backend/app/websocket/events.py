@@ -1,5 +1,6 @@
 import socketio
 import logging
+from sqlalchemy import func
 from app.core.socket_server import sio
 from app.core.database import SessionLocal
 from app.models.sql_models import User, Session, Report
@@ -32,6 +33,10 @@ async def connect(sid, environ, auth):
         if not user:
             print(f"DEBUG: Connect Rejected - User Not Found {device_id}")
             return False
+            
+        if user.is_banned:
+            print(f"DEBUG: Connect Rejected - Banned User {device_id}")
+            return False
         
         await sio.save_session(sid, {'device_id': device_id})
         await sio.enter_room(sid, f"user_{device_id}")
@@ -48,10 +53,30 @@ async def connect(sid, environ, auth):
 async def disconnect(sid, *args):
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
+        session_id = user_session.get('active_session_id')
     
     if device_id:
         print(f"DEBUG: Disconnect {device_id}")
         mapping_service.leave_queue(device_id)
+
+        # Handle ungraceful disconnect during chat
+        if session_id:
+            print(f"DEBUG: User {device_id} disconnected from active session {session_id}")
+            # Notify partner
+            await sio.emit('partner_left', {'reason': 'disconnected'}, room=session_id, skip_sid=sid)
+            
+            # Close session in DB
+            db = SessionLocal()
+            try:
+                sess = db.query(Session).filter(Session.session_id == session_id).first()
+                if sess and sess.is_active:
+                    sess.is_active = False
+                    sess.ended_at = func.now()
+                    db.commit()
+            except Exception as e:
+                logger.error(f"Error closing session on disconnect: {e}")
+            finally:
+                db.close()
 
 @sio.event
 async def join_queue(sid, data):
@@ -99,6 +124,11 @@ async def join_queue(sid, data):
             }
             # Put both users in the room!
             await sio.enter_room(sid, session_id)
+            
+            # Save active session ID for disconnect handling
+            async with sio.session(sid) as user_session:
+                user_session['active_session_id'] = session_id
+
             # For the partner, we need their SID. 
             # We don't have partner's SID easily here unless we store it in Redis or look up.
             # But wait, mapping_service returned partner_id (device_id).
@@ -117,6 +147,9 @@ async def join_queue(sid, data):
         elif result['status'] == 'cooldown':
             await sio.emit('error', {'message': f"Please wait {result['wait']}s before matching again."}, room=sid)
 
+        elif result['status'] == 'error':
+            await sio.emit('error', {'message': result['message']}, room=sid)
+
     except Exception as e:
         print(f"DEBUG: Join Queue Error: {e}")
         await sio.emit('error', {'message': str(e)}, room=sid)
@@ -131,6 +164,7 @@ async def join_session(sid, data):
     
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
+        user_session['active_session_id'] = session_id
     
     # Validation logic...
     await sio.enter_room(sid, session_id)
@@ -159,6 +193,9 @@ async def leave_chat(sid, data):
 
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
+        # Clear active session
+        if 'active_session_id' in user_session:
+            del user_session['active_session_id']
         
     await sio.leave_room(sid, session_id)
     await sio.emit('partner_left', {'reason': 'left'}, room=session_id)

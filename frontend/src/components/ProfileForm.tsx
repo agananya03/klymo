@@ -89,15 +89,15 @@ export default function ProfileForm({ onProfileComplete }: { onProfileComplete: 
     };
 
     return (
-        <div className="w-full max-w-md p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-gray-100">Setup Profile</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+        <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-700">
+            <h3 className="text-2xl font-bold mb-2 text-white text-center tracking-tight">Setup Profile</h3>
+            <p className="text-sm text-gray-400 mb-8 text-center font-light">
                 Your nickname is temporary. No profile pictures allowed.
             </p>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Nickname</label>
+            <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="group">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-purple-300 mb-2 ml-1">Nickname</label>
                     <input
                         type="text"
                         value={nickname}
@@ -105,57 +105,68 @@ export default function ProfileForm({ onProfileComplete }: { onProfileComplete: 
                         placeholder="MysteryWalker"
                         maxLength={50}
                         required
-                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                        className="w-full p-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all duration-300 group-hover:bg-white/10"
                     />
                 </div>
 
-                <div>
-                    <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Looking For</label>
-                    <select
-                        value={preference}
-                        onChange={(e) => setPreference(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition"
-                    >
-                        <option value="any">Any Gender</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                    </select>
+                <div className="group">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-pink-300 mb-2 ml-1">Looking For</label>
+                    <div className="relative">
+                        <select
+                            value={preference}
+                            onChange={(e) => setPreference(e.target.value)}
+                            className="w-full p-4 rounded-xl bg-white/5 border border-white/10 text-white appearance-none focus:ring-2 focus:ring-pink-500 outline-none transition-all duration-300 cursor-pointer hover:bg-white/10"
+                        >
+                            <option value="any" className="bg-gray-900">Anyone (Fastest Match)</option>
+                            <option value="male" className="bg-gray-900">Male</option>
+                            <option value="female" className="bg-gray-900">Female</option>
+                        </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-pink-500">
+                            ▼
+                        </div>
+                    </div>
                 </div>
 
-                <div>
-                    <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Short Bio (Optional)</label>
+                <div className="group">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-blue-300 mb-2 ml-1">Short Bio (Optional)</label>
                     <textarea
                         value={bio}
                         onChange={(e) => setBio(e.target.value)}
                         placeholder="Just here to chat..."
                         maxLength={200}
                         rows={3}
-                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition resize-none"
+                        className="w-full p-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all duration-300 resize-none group-hover:bg-white/10"
                     />
                 </div>
 
                 {status && (
-                    <p className={`text-sm text-center font-medium ${status.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
+                    <p className={`text-sm text-center font-bold tracking-wide animate-pulse ${status?.includes('Error') ? 'text-red-400' : 'text-green-400'}`}>
                         {status}
                     </p>
                 )}
 
-                <div className="flex gap-3 pt-2">
+                <div className="flex gap-4 pt-4">
                     <button
                         type="submit"
                         disabled={isLoading || !nickname.trim()}
-                        className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition transform active:scale-95"
+                        className="flex-1 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(192,38,211,0.3)] hover:shadow-[0_0_30px_rgba(192,38,211,0.5)] hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                     >
-                        {isLoading ? 'Saving...' : 'Continue'}
+                        {isLoading ? (
+                            <span className="flex items-center justify-center gap-2">
+                                <span className="w-2 h-2 bg-white rounded-full animate-bounce"></span>
+                                <span className="w-2 h-2 bg-white rounded-full animate-bounce delay-75"></span>
+                                <span className="w-2 h-2 bg-white rounded-full animate-bounce delay-150"></span>
+                            </span>
+                        ) : 'Start Matching'}
                     </button>
                     {nickname && (
                         <button
                             type="button"
                             onClick={handleClear}
                             disabled={isLoading}
-                            className="px-4 py-3 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                            className="px-6 py-4 text-red-400 font-semibold hover:bg-red-500/10 rounded-xl transition border border-transparent hover:border-red-500/50"
                         >
-                            Clear
+                            Reset
                         </button>
                     )}
                 </div>
