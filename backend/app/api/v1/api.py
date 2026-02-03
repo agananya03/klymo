@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import hello, example_redis, verification, profiles, detect, chat, reports
+from app.api.v1.endpoints import hello, example_redis, verification, profiles, detect, chat, analytics
 
 api_router = APIRouter()
 api_router.include_router(hello.router, prefix="/hello", tags=["hello"])
@@ -9,4 +9,4 @@ api_router.include_router(verification.router, prefix="/verification", tags=["ve
 api_router.include_router(profiles.router, prefix="/profiles", tags=["profiles"])
 api_router.include_router(detect.router, prefix="/detect", tags=["detect"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
-api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
+api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
