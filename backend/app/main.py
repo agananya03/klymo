@@ -37,9 +37,17 @@ async def global_exception_handler(request: Request, exc: Exception):
         },
     )
 
+# CORS Middleware
+origins = [str(origin).rstrip("/") for origin in settings.BACKEND_CORS_ORIGINS]
+print(f"DEBUG: Allowed Origins: {origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://cloud-forest-chat-production.up.railway.app",
+        "http://localhost:3000",  # Keep for local testing
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

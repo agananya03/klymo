@@ -2,6 +2,7 @@ from typing import Optional, List, Dict, Any
 import redis
 import json
 import logging
+import os
 from app.core.config import settings
 
 class RedisClient:
@@ -17,24 +18,40 @@ class RedisClient:
             return
 
         try:
-            self.pool = redis.ConnectionPool(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                db=settings.REDIS_DB,
-                password=settings.REDIS_PASSWORD,
-                decode_responses=True,
-                max_connections=10,
-                socket_timeout=5,
-                retry_on_timeout=True
-            )
-            self.client = redis.Redis(connection_pool=self.pool)
+                # Check for Railway Redis URL first
+            import os
+            redis_url = os.getenv('REDIS_URL')
+            
+            if redis_url:
+                # Use Railway Redis URL
+                logging.info(f"Connecting to Railway Redis...")
+                self.client = redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    socket_timeout=5,
+                    retry_on_timeout=True
+                )
+            else:
+                # Fallback to individual connection parameters
+                self.pool = redis.ConnectionPool(
+                    host=settings.REDIS_HOST,
+                    port=settings.REDIS_PORT,
+                    db=settings.REDIS_DB,
+                    password=settings.REDIS_PASSWORD,
+                    decode_responses=True,
+                    max_connections=10,
+                    socket_timeout=5,
+                    retry_on_timeout=True
+                )
+                self.client = redis.Redis(connection_pool=self.pool)
+        
             # Test connection
             self.client.ping()
             logging.info("Successfully connected to Redis")
-            
+        
             # Register Lua Script
             self._register_scripts()
-            
+        
         except redis.ConnectionError as e:
             logging.warning(f"Failed to connect to Redis: {e}. Caching will be disabled.")
             self.client = None

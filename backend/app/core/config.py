@@ -10,10 +10,17 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./app.db"
 
     # CORS
-    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = ["http://localhost:3000"]
+    BACKEND_CORS_ORIGINS: List[Union[AnyHttpUrl, str]] = [
+    "http://localhost:3000",
+    "http://localhost:8080",
+    "http://localhost:5173",
+    "https://cloud-forest-production.up.railway.app",
+    "https://cloud-forest-chat-production.up.railway.app",  # Your frontend
+    "*"  # Temporary - for debugging (remove later)
+]
 
-    # Redis
-    REDIS_ENABLED: bool = False
+    # Redis - Enable by default (Railway will provide REDIS_URL)
+    REDIS_ENABLED: bool = True
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0

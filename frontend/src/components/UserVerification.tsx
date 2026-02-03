@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import CameraCapture from "@/components/CameraCapture";
+import { getApiUrl } from '@/utils/api-config';
 
 export default function UserVerification() {
     const [result, setResult] = useState<{ label: string; score: number }[] | null>(null);
@@ -22,7 +23,7 @@ export default function UserVerification() {
             const formData = new FormData();
             formData.append("file", blob, "capture.jpg");
 
-            const response = await fetch("http://localhost:8000/api/v1/detect/gender", {
+            const response = await fetch(getApiUrl("/api/v1/detect/gender"), {
                 method: "POST",
                 body: formData,
             });

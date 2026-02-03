@@ -7,6 +7,8 @@ interface ProfileFormProps {
     onProfileComplete: () => void;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 export default function ProfileForm({ onProfileComplete }: { onProfileComplete: (pref: string) => void }) {
     const [nickname, setNickname] = useState('');
     const [bio, setBio] = useState('');
@@ -21,8 +23,7 @@ export default function ProfileForm({ onProfileComplete }: { onProfileComplete: 
             const id = await generateDeviceId();
             setDeviceId(id);
             try {
-                // Use relative path for proxy
-                const res = await fetch(`/api/v1/profiles/${id}`);
+                const res = await fetch(`${API_BASE}/api/v1/profiles/${id}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.nickname) setNickname(data.nickname);
@@ -44,7 +45,7 @@ export default function ProfileForm({ onProfileComplete }: { onProfileComplete: 
         setStatus(null);
 
         try {
-            const res = await fetch('/api/v1/profiles', {
+            const res = await fetch(`${API_BASE}/api/v1/profiles`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -72,7 +73,7 @@ export default function ProfileForm({ onProfileComplete }: { onProfileComplete: 
 
         setIsLoading(true);
         try {
-            const res = await fetch(`/api/v1/profiles/${deviceId}`, {
+            const res = await fetch(`${API_BASE}/api/v1/profiles/${deviceId}`, {
                 method: 'DELETE'
             });
             if (!res.ok) throw new Error('Failed to clear profile');

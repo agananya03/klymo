@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { getWsUrl } from '@/utils/api-config';
 
 type Message = {
     id: string;
@@ -31,7 +32,7 @@ export default function EphemeralChat({ sessionId, onEnd }: { sessionId: string;
         if (ws.current) ws.current.close();
 
         // Connect to session-specific room
-        const socket = new WebSocket(`ws://localhost:8000/api/v1/chat/ws/${sessionId}`);
+        const socket = new WebSocket(getWsUrl(`/api/v1/chat/ws/${sessionId}`));
 
         socket.onopen = () => {
             setIsConnected(true);

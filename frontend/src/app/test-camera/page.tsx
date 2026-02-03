@@ -2,6 +2,7 @@
 
 import CameraCapture from '../../components/CameraCapture';
 import { useState } from 'react';
+import { getApiUrl } from '@/utils/api-config';
 
 export default function TestCameraPage() {
     const [lastCapture, setLastCapture] = useState<string | null>(null);
@@ -22,7 +23,7 @@ export default function TestCameraPage() {
             const formData = new FormData();
             formData.append("file", blob, "test-capture.jpg");
 
-            const response = await fetch("http://localhost:8000/api/v1/detect/gender", {
+            const response = await fetch(getApiUrl("/api/v1/detect/gender"), {
                 method: "POST",
                 body: formData,
             });

@@ -92,13 +92,14 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
 
             try {
                 const deviceId = await generateDeviceId();
-                console.log("Starting verification request..."); // Force HMR update
+                console.log("Starting verification request...");
                 const formData = new FormData();
                 formData.append('file', blob, 'capture.jpg');
                 formData.append('device_id', deviceId);
 
-                // Use relative path to leverage Next.js proxy
-                const response = await fetch('/api/v1/verification/verify-gender', {
+                // Use environment variable for Railway
+                const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const response = await fetch(`${API_BASE}/api/v1/verification/verify-gender`, {
                     method: 'POST',
                     body: formData,
                 });
