@@ -1,17 +1,30 @@
 import socketio
+import os
 from app.core.config import settings
 
 # Initialize the Async Socket.IO server
-# CORS allowed origins are pulled from settings
-mgr = socketio.AsyncRedisManager(
-    f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
-)
+# Use Railway Redis URL if available
+redis_url = os.getenv('REDIS_URL')
+
+if redis_url:
+    # Railway Redis
+    mgr = socketio.AsyncRedisManager(redis_url)
+else:
+    # Local Redis
+    mgr = socketio.AsyncRedisManager(
+        f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
+    )
 
 sio = socketio.AsyncServer(
     async_mode='asgi',
-    cors_allowed_origins=['http://localhost:3000', 'http://127.0.0.1:3000'],
-    # For dev, '*' is easiest, but could use settings.BACKEND_CORS_ORIGINS
-    client_manager=mgr
+    cors_allowed_origins=[
+        'https://cloud-forest-chat-production.up.railway.app',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+    ],
+    client_manager=mgr,
+    logger=True,  # Enable logging to debug connection issues
+    engineio_logger=True
 )
 
 # Wrap with ASGI application
