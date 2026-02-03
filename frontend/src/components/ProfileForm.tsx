@@ -2,14 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { generateDeviceId } from '@/utils/device-id';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
 
 interface ProfileFormProps {
-    onProfileComplete: () => void;
+    onProfileComplete: (preference: string) => void;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-export default function ProfileForm({ onProfileComplete }: { onProfileComplete: (pref: string) => void }) {
+export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
     const [nickname, setNickname] = useState('');
     const [bio, setBio] = useState('');
     const [preference, setPreference] = useState('any');
@@ -18,7 +21,6 @@ export default function ProfileForm({ onProfileComplete }: { onProfileComplete: 
     const [deviceId, setDeviceId] = useState<string | null>(null);
 
     useEffect(() => {
-        // Load device ID and check for existing profile
         const loadProfile = async () => {
             const id = await generateDeviceId();
             setDeviceId(id);
@@ -59,9 +61,9 @@ export default function ProfileForm({ onProfileComplete }: { onProfileComplete: 
             if (!res.ok) throw new Error('Failed to save profile');
 
             setStatus('Profile saved successfully!');
-            setTimeout(() => onProfileComplete(preference), 1000); // Proceed after delay
+            setTimeout(() => onProfileComplete(preference), 1000);
         } catch (err) {
-            setStatus('Error saving profile. Please try again.');
+            setStatus('Error saving profile.');
             console.error(err);
         } finally {
             setIsLoading(false);
@@ -69,7 +71,7 @@ export default function ProfileForm({ onProfileComplete }: { onProfileComplete: 
     };
 
     const handleClear = async () => {
-        if (!deviceId || !confirm("Are you sure you want to clear your profile data?")) return;
+        if (!deviceId || !confirm("Are you sure? This action is permanent.")) return;
 
         setIsLoading(true);
         try {
@@ -90,77 +92,68 @@ export default function ProfileForm({ onProfileComplete }: { onProfileComplete: 
     };
 
     return (
-        <div className="w-full max-w-md p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-gray-100">Setup Profile</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                Your nickname is temporary. No profile pictures allowed.
+        <Card variant="white" className="w-full max-w-md mx-auto">
+            <h3 className="text-3xl font-black uppercase mb-4 text-center bg-primary border-b-[3px] border-black p-2 -mx-6 -mt-6">
+                Setup Profile
+            </h3>
+            <p className="font-bold mb-6 text-center bg-black text-white p-2 border-[3px] border-black inline-block transform -rotate-1 mx-auto block max-w-xs">
+                NO PICTURES. JUST VIBES.
             </p>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Nickname</label>
-                    <input
-                        type="text"
-                        value={nickname}
-                        onChange={(e) => setNickname(e.target.value)}
-                        placeholder="MysteryWalker"
-                        maxLength={50}
-                        required
-                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition"
-                    />
-                </div>
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <Input
+                    label="Nickname"
+                    value={nickname}
+                    onChange={(e) => setNickname(e.target.value)}
+                    placeholder="MYSTERY_WALKER"
+                    maxLength={50}
+                    required
+                />
 
-                <div>
-                    <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Looking For</label>
-                    <select
-                        value={preference}
-                        onChange={(e) => setPreference(e.target.value)}
-                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition"
-                    >
-                        <option value="any">Any Gender</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                    </select>
-                </div>
+                {/* Looking For field removed as per request */}
 
-                <div>
-                    <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Short Bio (Optional)</label>
+                <div className="flex flex-col gap-2">
+                    <label className="font-bold uppercase tracking-tight text-sm">Bio (Optional)</label>
                     <textarea
                         value={bio}
                         onChange={(e) => setBio(e.target.value)}
-                        placeholder="Just here to chat..."
+                        placeholder="JUST HERE TO CHAT..."
                         maxLength={200}
                         rows={3}
-                        className="w-full p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 outline-none transition resize-none"
+                        className="w-full p-3 bg-white border-[3px] border-black font-bold focus:outline-none focus:shadow-hard transition-all resize-none placeholder:text-gray-500"
                     />
                 </div>
 
                 {status && (
-                    <p className={`text-sm text-center font-medium ${status.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
+                    <div className={`p-4 border-[3px] border-black font-bold text-center uppercase ${status.includes('Error') ? 'bg-red-500 text-white' : 'bg-green-400 text-black'}`}>
                         {status}
-                    </p>
+                    </div>
                 )}
 
-                <div className="flex gap-3 pt-2">
-                    <button
+                <div className="flex gap-4 pt-4">
+                    <Button
                         type="submit"
                         disabled={isLoading || !nickname.trim()}
-                        className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition transform active:scale-95"
+                        className="flex-1"
+                        variant="primary"
+                        size="lg"
                     >
-                        {isLoading ? 'Saving...' : 'Continue'}
-                    </button>
+                        {isLoading ? 'SAVING...' : 'CONTINUE'}
+                    </Button>
+
                     {nickname && (
-                        <button
+                        <Button
                             type="button"
                             onClick={handleClear}
                             disabled={isLoading}
-                            className="px-4 py-3 text-red-500 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                            variant="outline"
+                            className="text-red-600 border-red-600 hover:bg-red-50"
                         >
-                            Clear
-                        </button>
+                            CLEAR
+                        </Button>
                     )}
                 </div>
             </form>
-        </div>
+        </Card>
     );
 }

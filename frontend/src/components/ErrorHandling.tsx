@@ -37,28 +37,28 @@ export class ErrorBoundary extends Component<Props, State> {
             }
 
             return (
-                <div className="min-h-screen flex items-center justify-center p-4">
-                    <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 text-center space-y-4">
+                <div className="min-h-screen flex items-center justify-center p-4 bg-yellow-50">
+                    <div className="max-w-md w-full bg-white border-[3px] border-black shadow-hard p-6 text-center space-y-4">
                         <div className="text-6xl">⚠️</div>
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                        <h2 className="text-2xl font-black uppercase bg-black text-white p-2 transform -rotate-1">
                             Something went wrong
                         </h2>
-                        <p className="text-gray-600 dark:text-gray-300">
+                        <p className="font-bold border-[3px] border-black p-4 bg-gray-100">
                             We're sorry, but something unexpected happened. Please try refreshing the page.
                         </p>
                         {process.env.NODE_ENV === 'development' && this.state.error && (
-                            <details className="text-left mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                                <summary className="cursor-pointer text-sm font-medium text-red-600 dark:text-red-400">
-                                    Error Details (Development Only)
+                            <details className="text-left mt-4 p-4 bg-red-100 border-[3px] border-black">
+                                <summary className="cursor-pointer text-sm font-black text-red-600 uppercase">
+                                    Error Details (DEV)
                                 </summary>
-                                <pre className="mt-2 text-xs text-red-800 dark:text-red-300 overflow-auto">
+                                <pre className="mt-2 text-xs font-mono overflow-auto">
                                     {this.state.error.toString()}
                                 </pre>
                             </details>
                         )}
                         <button
                             onClick={() => window.location.reload()}
-                            className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
+                            className="w-full px-6 py-3 bg-blue-600 border-[3px] border-black text-white font-black uppercase shadow-hard hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all active:bg-blue-700"
                         >
                             Refresh Page
                         </button>
@@ -82,16 +82,16 @@ export function ErrorMessage({
     onRetry?: () => void;
 }) {
     return (
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+        <div className="p-4 bg-red-100 border-[3px] border-black shadow-hard">
             <div className="flex items-start gap-3">
                 <span className="text-2xl">❌</span>
                 <div className="flex-1">
-                    <h3 className="font-bold text-red-800 dark:text-red-200">{title}</h3>
-                    <p className="text-sm text-red-600 dark:text-red-300 mt-1">{message}</p>
+                    <h3 className="font-black uppercase text-red-600">{title}</h3>
+                    <p className="text-sm font-bold mt-1">{message}</p>
                     {onRetry && (
                         <button
                             onClick={onRetry}
-                            className="mt-3 px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition"
+                            className="mt-3 px-4 py-2 bg-white border-[3px] border-black text-sm font-black uppercase hover:bg-gray-100 transition shadow-[2px_2px_0px_#000]"
                         >
                             Try Again
                         </button>
@@ -117,14 +117,14 @@ export function RateLimitError({
     };
 
     return (
-        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+        <div className="p-4 bg-yellow-100 border-[3px] border-black shadow-hard">
             <div className="flex items-start gap-3">
                 <span className="text-2xl">⏱️</span>
                 <div className="flex-1">
-                    <h3 className="font-bold text-yellow-800 dark:text-yellow-200">Rate Limited</h3>
-                    <p className="text-sm text-yellow-600 dark:text-yellow-300 mt-1">{message}</p>
+                    <h3 className="font-black uppercase text-yellow-800">Rate Limited</h3>
+                    <p className="text-sm font-bold mt-1">{message}</p>
                     {retryAfter && retryAfter > 0 && (
-                        <p className="text-xs text-yellow-500 dark:text-yellow-400 mt-2">
+                        <p className="text-xs font-black uppercase bg-white border-2 border-black px-2 py-1 inline-block mt-2">
                             Try again in {formatTime(retryAfter)}
                         </p>
                     )}
@@ -137,17 +137,17 @@ export function RateLimitError({
 // Network error component
 export function NetworkError({ onRetry }: { onRetry: () => void }) {
     return (
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <div className="p-4 bg-gray-100 border-[3px] border-black shadow-hard">
             <div className="flex items-start gap-3">
                 <span className="text-2xl">📡</span>
                 <div className="flex-1">
-                    <h3 className="font-bold text-gray-800 dark:text-gray-200">Connection Error</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                    <h3 className="font-black uppercase">Connection Error</h3>
+                    <p className="text-sm font-bold mt-1">
                         Unable to connect to the server. Please check your internet connection.
                     </p>
                     <button
                         onClick={onRetry}
-                        className="mt-3 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                        className="mt-3 px-4 py-2 bg-blue-500 border-[3px] border-black text-white text-sm font-black uppercase hover:bg-blue-600 transition shadow-[2px_2px_0px_#000]"
                     >
                         Retry Connection
                     </button>

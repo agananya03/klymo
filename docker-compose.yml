@@ -16,12 +16,16 @@ services:
       - redis
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      target: builder
+    command: npm run dev
     ports:
       - "3000:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - /app/.next
     environment:
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true

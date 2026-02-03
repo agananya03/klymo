@@ -98,16 +98,16 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
 
     return (
         <div
-            className={`${colors[toast.type]} px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px] max-w-[400px] pointer-events-auto animate-in slide-in-from-right-full fade-in duration-300`}
+            className={`${colors[toast.type]} px-4 py-3 border-[3px] border-black shadow-hard flex items-center gap-3 min-w-[300px] max-w-[400px] pointer-events-auto animate-in slide-in-from-right-full fade-in duration-300`}
         >
-            <span className="text-xl font-bold">{icons[toast.type]}</span>
-            <p className="flex-1 text-sm font-medium">{toast.message}</p>
+            <span className="text-xl font-black">{icons[toast.type]}</span>
+            <p className="flex-1 text-sm font-bold uppercase tracking-tight">{toast.message}</p>
             <button
                 onClick={() => onRemove(toast.id)}
-                className="text-white/80 hover:text-white transition ml-2"
+                className="text-white hover:text-black hover:bg-white border-2 border-transparent hover:border-black rounded-none transition ml-2 p-1"
             >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
                 </svg>
             </button>
         </div>

@@ -2,6 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { generateDeviceId } from '@/utils/device-id';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 interface CameraCaptureProps {
     onCapture?: (imageUrl: string) => void;
@@ -29,7 +31,6 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
         }
 
         try {
-            // Strict constraint for user-facing camera
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'user', width: 640, height: 480 }
             });
@@ -44,7 +45,7 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
             }
         } catch (err) {
             console.error("Error accessing camera:", err);
-            setError(`Camera access denied. Please allow permissions to verify.`);
+            setError(`Camera access denied.`);
             setIsLoading(false);
         }
     };
@@ -70,34 +71,21 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
         canvas.height = video.videoHeight;
 
         const ctx = canvas.getContext('2d');
-        if (!ctx) {
-            setError("Internal error: Canvas context missing");
-            setIsLoading(false);
-            return;
-        }
+        if (!ctx) return;
 
-        // Draw current frame
         ctx.drawImage(video, 0, 0);
 
-        // Convert to Blob (JPEG 92%)
         canvas.toBlob(async (blob) => {
-            if (!blob) {
-                setError("Failed to capture image");
-                setIsLoading(false);
-                return;
-            }
+            if (!blob) return;
 
-            // Immediately stop camera privacy rule
             stopCamera();
 
             try {
                 const deviceId = await generateDeviceId();
-                console.log("Starting verification request...");
                 const formData = new FormData();
                 formData.append('file', blob, 'capture.jpg');
                 formData.append('device_id', deviceId);
 
-                // Use environment variable for Railway
                 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
                 const response = await fetch(`${API_BASE}/api/v1/verification/verify-gender`, {
                     method: 'POST',
@@ -106,30 +94,19 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
 
                 const responseText = await response.text();
                 let result;
-                try {
-                    result = JSON.parse(responseText);
-                } catch (e) {
-                    console.error("Non-JSON response received:", responseText);
-                    throw new Error(`Server returned an error (${response.status}). The backend might be misconfigured.`);
-                }
+                try { result = JSON.parse(responseText); } catch (e) { throw new Error('Server error'); }
 
-                if (!response.ok) {
-                    throw new Error(result.detail || result.error || `Server error (${response.status})`);
-                }
+                if (!response.ok) throw new Error(result.detail || 'Verification failed');
 
                 setVerificationStatus('success');
                 setVerificationMessage(`Verified as ${result.gender} (${(result.confidence * 100).toFixed(1)}%)`);
 
-                // Trigger parent callback after short delay for UX
                 if (onCapture) {
-                    // Pass the detected gender to the parent
                     setTimeout(() => onCapture(result.gender), 1500);
                 }
             } catch (err) {
-                console.error("Verification error:", err);
                 setVerificationStatus('failed');
                 setVerificationMessage(err instanceof Error ? err.message : "Verification failed");
-                // Allow retrying
             } finally {
                 setIsLoading(false);
             }
@@ -137,59 +114,57 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
         }, 'image/jpeg', 0.92);
     };
 
-    // Cleanup
     useEffect(() => {
         return () => stopCamera();
     }, [stopCamera]);
 
     return (
-        <div className="flex flex-col items-center gap-6 p-6 border rounded-xl shadow-lg max-w-lg mx-auto bg-white dark:bg-gray-800 transition-all">
-            <h3 className="text-xl font-bold text-gray-800 dark:text-white">
-                Identity Verification
+        <Card variant="white" className="flex flex-col items-center gap-6 max-w-lg mx-auto">
+            <h3 className="text-2xl font-black uppercase bg-primary px-4 py-1 border-[3px] border-black transform -rotate-1">
+                Identity Check
             </h3>
 
-            <div className={`relative w-full aspect-video bg-black rounded-lg overflow-hidden border-2 ${verificationStatus === 'success' ? 'border-green-500' :
-                verificationStatus === 'failed' ? 'border-red-500' : 'border-gray-200 dark:border-gray-700'
+            <div className={`relative w-full aspect-video bg-black/10 overflow-hidden border-[3px] border-black shadow-hard ${verificationStatus === 'success' ? 'border-green-500' :
+                verificationStatus === 'failed' ? 'border-red-500' : ''
                 }`}>
 
-                {/* Initial State / Messages */}
                 {!isStreaming && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-10 bg-black/80 text-white">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10 bg-white/90">
                         {verificationStatus === 'success' ? (
-                            <div className="text-green-400">
-                                <span className="text-4xl">✓</span>
-                                <p className="mt-2 font-semibold">{verificationMessage}</p>
-                                <p className="text-sm opacity-75 mt-1">Image discarded for privacy.</p>
+                            <div className="text-black">
+                                <span className="text-6xl text-green-500 font-black">✓</span>
+                                <p className="mt-2 font-bold uppercase">{verificationMessage}</p>
                             </div>
                         ) : verificationStatus === 'failed' ? (
-                            <div className="text-red-400">
-                                <span className="text-4xl">⚠</span>
-                                <p className="mt-2 font-semibold">{verificationMessage}</p>
-                                <button
+                            <div className="text-red-600">
+                                <span className="text-6xl font-black">!</span>
+                                <p className="mt-2 font-bold uppercase">{verificationMessage}</p>
+                                <Button
                                     onClick={startCamera}
-                                    className="mt-4 px-4 py-2 bg-white text-red-600 rounded-full text-sm font-bold hover:bg-gray-200"
+                                    variant="outline"
+                                    className="mt-4 border-red-600 text-red-600"
                                 >
-                                    Try Again
-                                </button>
+                                    TRY AGAIN
+                                </Button>
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                <p className="text-sm opacity-90 max-w-xs mx-auto">
-                                    Instant camera-only verification. No uploads allowed.
-                                    Images are processed in memory and immediately deleted.
+                                <p className="font-bold uppercase max-w-xs mx-auto">
+                                    Instant Camera Verification.
                                 </p>
-                                <button
+                                <Button
                                     onClick={startCamera}
                                     disabled={isLoading}
-                                    className="px-6 py-3 bg-blue-600 rounded-full font-bold hover:bg-blue-700 transition disabled:opacity-50"
+                                    variant="primary"
+                                    size="lg"
                                 >
-                                    {isLoading ? 'Starting...' : 'Enable Camera'}
-                                </button>
+                                    {isLoading ? 'INITIATING...' : 'ENABLE CAMERA'}
+                                </Button>
                             </div>
                         )}
 
                         {error && (
-                            <p className="mt-4 text-red-500 bg-black/90 px-3 py-1 rounded">{error}</p>
+                            <p className="mt-4 font-bold bg-red-500 text-white px-2 border-2 border-black">{error}</p>
                         )}
                     </div>
                 )}
@@ -205,20 +180,22 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
 
             {isStreaming && (
                 <div className="flex flex-col items-center gap-3 w-full">
-                    <button
+                    <Button
                         onClick={captureAndVerify}
                         disabled={isLoading}
-                        className="w-full px-6 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 shadow-lg transition transform active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
+                        variant="accent"
+                        size="lg"
+                        className="w-full"
                     >
-                        {isLoading ? 'Verifying...' : 'Verify Identity'}
-                    </button>
-                    <p className="text-xs text-gray-400">
-                        By verifying, you confirm this is your real photo.
+                        {isLoading ? 'VERIFYING...' : 'VERIFY MY IDENTITY'}
+                    </Button>
+                    <p className="text-xs font-bold uppercase text-gray-500">
+                        We process this image instantly and then delete it.
                     </p>
                 </div>
             )}
 
             <canvas ref={canvasRef} className="hidden" />
-        </div>
+        </Card>
     );
 }
