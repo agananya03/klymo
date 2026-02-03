@@ -248,6 +248,16 @@ async def report_user(sid, data):
             reason=reason
         )
         db.add(report)
+        
+        # Trust Score Logic
+        if reported_device_id:
+            reported_user = db.query(User).filter(User.device_id == reported_device_id).first()
+            if reported_user:
+                reported_user.trust_score = max(0, reported_user.trust_score - 10)
+                if reported_user.trust_score < 50:
+                    # Potential Soft Ban Logic (Future: increase cooldowns)
+                    pass
+        
         db.commit()
         await sio.emit('report_received', {'status': 'processed'}, room=sid)
     finally:

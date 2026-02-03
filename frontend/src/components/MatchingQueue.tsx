@@ -21,6 +21,11 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
+        // Request Notification Permission on mount
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
         const connectAndJoin = async () => {
             const deviceId = await generateDeviceId();
             const socket = getSocket();
@@ -43,13 +48,17 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
                 startQueueTimer();
             });
 
-            socket.on('match_found', (data) => {
-                setStatus('Match Found!');
-                clearQueueTimer();
-                socket.emit('join_session', { session_id: data.session_id });
+            socket.on('match_found', (data: any) => {
+                console.log('Match found:', data);
+
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification("Klymo Chat", { body: "Match Found! Connecting you now..." });
+                }
+
+                setStatus('matched');
                 setTimeout(() => {
-                    onMatchFound(data);
-                }, 1000);
+                    onMatchFound(data.session_id);
+                }, 1500);
             });
 
             socket.on('error', (data) => {

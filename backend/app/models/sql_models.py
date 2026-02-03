@@ -17,6 +17,7 @@ class User(Base):
     verified_at = Column(DateTime, nullable=False) # Constraint from image
     created_at = Column(DateTime, default=func.now())
     is_banned = Column(Boolean, default=False)
+    trust_score = Column(Integer, default=100)
 
     # Relationships (optional for now, but good for ORM)
     sessions_as_user1 = relationship("Session", foreign_keys="[Session.user1_device_id]")

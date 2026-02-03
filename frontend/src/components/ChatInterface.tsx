@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { getSocket } from '@/utils/socket';
 import { generateDeviceId } from '@/utils/device-id';
+import { analyzeToxicity } from '@/utils/toxicity';
+import { getRandomStarter } from '@/utils/conversation-starters';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -143,9 +145,16 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
         }, 1500);
     };
 
-    const handleSend = (e: React.FormEvent) => {
+    const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim() || partnerLeft) return;
+
+        // AI-Powered Toxicity Check
+        const analysis = await analyzeToxicity(input);
+        if (analysis.isToxic) {
+            alert(`⚠️ Message blocked: ${analysis.reason}. Please be kind!`);
+            return;
+        }
 
         const socket = getSocket();
         socket.emit('send_message', {
@@ -159,6 +168,8 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
         setInput('');
         inputRef.current?.focus();
     };
+
+
 
     const handleLeave = () => {
         const socket = getSocket();
@@ -283,6 +294,15 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                         maxLength={500}
                         className="flex-1 p-4 border-[3px] border-black font-bold uppercase placeholder:text-gray-400 focus:outline-none focus:bg-yellow-50 focus:shadow-hard transition-all"
                     />
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="px-3 bg-yellow-400 text-black border-2 border-black shadow-hard rounded-none"
+                        onClick={() => setInput(getRandomStarter())}
+                        title="Get a Conversation Starter"
+                    >
+                        ❄️
+                    </Button>
                     <Button
                         type="submit"
                         disabled={!input.trim() || partnerLeft || !isConnected}

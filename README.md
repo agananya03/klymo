@@ -1,60 +1,71 @@
-# Klymo Project
+# Klymo - Anonymous Video Chat Platform
 
-This project consists of a Next.js 14 frontend and a FastAPI backend.
+Klymo is a secure, anonymous video chat application built with a focus on privacy, fairness, and a distinct Neobrutal design identity.
 
-## Structure
+## 🚀 Key Features
 
-- `frontend/`: Next.js 14 application (TypeScript, Tailwind CSS)
-- `backend/`: FastAPI application
+### 🔒 Privacy & Security
+- **Ephemeral Messaging**: Chats are relayed via WebSocket and never stored on a server. History exists only in your browser session.
+- **Anonymous Identity**: Device-based authentication using `FingerprintJS`. No emails or passwords required.
+- **Strict Verification**: AI-powered gender verification (Hugging Face) ensures accurate matching filters (90% confidence required). Images are processed in-memory and discarded immediately.
 
-## Getting Started
+### 🛡️ Abuse Prevention
+- **Cooldown System**: 5-minute cooldown between matches to prevent spam.
+- **Daily Limits**: Users are limited to 5 filtered matches per day (resets at midnight). "Any" matching is always free/unlimited.
+- **Ban System**: Automated blocking of banned device fingerprints.
+- **Reporting**: Integrated reporting system for harassment or inappropriate behavior.
 
-### Backend
+### 🎨 Neobrutal Design (UI/UX)
+- High-contrast, bold aesthetics with hard shadows and thick borders.
+- Interactive, responsive components using Tailwind CSS.
+- Mobile-first approach.
 
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-2. Create a virtual environment (optional but recommended):
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Run the server:
-   ```bash
-   python -m uvicorn app.main:app --reload
-   ```
-   The API will be available at http://localhost:8000.
-   Docs: http://localhost:8000/docs
+## 🛠️ Tech Stack
 
 ### Frontend
+- **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **State Management**: React Hooks + Context API
+- **Real-time**: Socket.IO Client
 
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
-2. Install dependencies (if not already done):
-   ```bash
-   npm install
-   ```
-3. Run the development server:
-   ```bash
-   npm run dev
-   ```
-   The app will be available at http://localhost:3000.
+### Backend
+- **Framework**: FastAPI (Python)
+- **Database**: PostgreSQL (SQLAlchemy ORM)
+- **Caching/Queues**: Redis
+- **AI Integration**: Hugging Face API (Gender Detection)
+- **Real-time**: Python-SocketIO
 
-### Docker
+## 🏗️ Project Structure
+- `frontend/`: Next.js application
+    - `src/components/`: Reusable UI components (Toast, Card, Button)
+    - `src/app/`: App Router pages and layouts
+- `backend/`: FastAPI application
+    - `app/api/`: REST API Endpoints
+    - `app/websocket/`: Socket.IO Event Handlers
+    - `app/services/`: Core logic (Matching, Verification)
+    - `app/models/`: Database Models
 
-To run the entire stack with Docker Compose:
+## 🏃‍♂️ Getting Started
 
-1. Ensure you have Docker Installed and Running.
-2. Run:
-   ```bash
-   docker-compose up --build
-   ```
-   - Frontend: http://localhost:3000
-   - Backend: http://localhost:8000
+### Prerequisites
+- Docker & Docker Compose
+- Node.js 18+ (for local frontend dev)
+- Python 3.10+ (for local backend dev)
+
+### Quick Start (Docker)
+Run the entire stack with one command:
+```bash
+docker-compose up --build
+```
+- **Frontend**: http://localhost:3000
+- **Backend**: http://localhost:8000
+- **Valid User Flows**:
+    1. **Verification**: Upload a selfie to verify gender.
+    2. **Profile**: Set a nickname (optional).
+    3. **Dashboard**: Access matching queues.
+    4. **Matching**: Select preference -> Join Queue -> Chat.
+
+## 📄 License
+This project is for educational purposes.
+
