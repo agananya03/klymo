@@ -80,13 +80,14 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
 
             stopCamera();
 
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
             try {
                 const deviceId = await generateDeviceId();
                 const formData = new FormData();
                 formData.append('file', blob, 'capture.jpg');
                 formData.append('device_id', deviceId);
 
-                const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
                 const response = await fetch(`${API_BASE}/api/v1/verification/verify-gender`, {
                     method: 'POST',
                     body: formData,
