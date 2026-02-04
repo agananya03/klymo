@@ -5,11 +5,11 @@ import logging
 import os
 from app.core.config import settings
 
-class RedisClient:
     def __init__(self):
         self.client: Optional[redis.Redis] = None
         self.pool: Optional[redis.ConnectionPool] = None
         self.match_script = None
+        self.last_error = None
 
     def connect(self):
         if not settings.REDIS_ENABLED:
@@ -18,7 +18,7 @@ class RedisClient:
             return
 
         try:
-                # Check for Railway Redis URL first
+            # Check for Railway Redis URL first
             import os
             redis_url = os.getenv('REDIS_URL')
             
@@ -48,11 +48,13 @@ class RedisClient:
             # Test connection
             self.client.ping()
             logging.info("Successfully connected to Redis")
+            self.last_error = None
         
             # Register Lua Script
             self._register_scripts()
         
-        except redis.ConnectionError as e:
+        except Exception as e:
+            self.last_error = str(e)
             logging.warning(f"Failed to connect to Redis: {e}. Caching will be disabled.")
             self.client = None
 

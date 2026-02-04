@@ -88,7 +88,8 @@ class MatchingService:
            - {'status': 'limit_reached'}
         """
         if not self.redis:
-             return {"status": "error", "message": "Redis unavailable"}
+             error_msg = getattr(redis_client, 'last_error', 'Unknown Error')
+             return {"status": "error", "message": f"Redis unavailable: {error_msg}"}
 
         # 1. Cooldown Check
         wait_time = self._check_cooldown(user_id)
