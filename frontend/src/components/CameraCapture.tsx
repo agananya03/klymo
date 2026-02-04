@@ -105,8 +105,11 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
                     setTimeout(() => onCapture(result.gender), 1500);
                 }
             } catch (err) {
+                console.error("Verification error:", err);
                 setVerificationStatus('failed');
-                setVerificationMessage(err instanceof Error ? err.message : "Verification failed");
+                // Show URL for debugging
+                const errorMessage = err instanceof Error ? err.message : "Verification failed";
+                setVerificationMessage(`${errorMessage} (Target: ${API_BASE})`);
             } finally {
                 setIsLoading(false);
             }
