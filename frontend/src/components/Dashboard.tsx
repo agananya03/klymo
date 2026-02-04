@@ -37,7 +37,7 @@ export default function Dashboard({ onStartChat, onEditProfile }: DashboardProps
 
     return (
         <>
-            <Card className="w-full max-w-lg p-0 overflow-hidden relative">
+            <Card className="w-full max-w-full p-0 overflow-hidden relative">
                 {/* Hero Section */}
                 <div className="p-8 pb-12 bg-secondary text-center relative border-b-[3px] border-black">
                     <div className="absolute top-0 left-0 w-full h-full opacity-20"

@@ -66,7 +66,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen p-8 pb-20 sm:p-20 font-sans text-black flex items-center justify-center bg-[url('/grid.svg')] relative">
-      <main className="flex flex-col gap-8 items-center w-full max-w-lg z-10">
+      <main className="flex flex-col gap-8 items-center w-full max-w-3xl z-10">
         <div className="w-full text-center mb-8">
           <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter mb-4 leading-none" style={{ textShadow: '4px 4px 0px #000' }}>
             WELCOME TO<br />KLYMO CHAT
