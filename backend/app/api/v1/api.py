@@ -10,3 +10,6 @@ api_router.include_router(profiles.router, prefix="/profiles", tags=["profiles"]
 api_router.include_router(detect.router, prefix="/detect", tags=["detect"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
+
+from app.api.v1.endpoints import health
+api_router.include_router(health.router, prefix="/health", tags=["health"])
