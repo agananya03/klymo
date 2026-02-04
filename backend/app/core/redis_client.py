@@ -5,6 +5,7 @@ import logging
 import os
 from app.core.config import settings
 
+class RedisClient:
     def __init__(self):
         self.client: Optional[redis.Redis] = None
         self.pool: Optional[redis.ConnectionPool] = None
