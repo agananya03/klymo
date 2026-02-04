@@ -18,7 +18,8 @@ else:
 sio = socketio.AsyncServer(
     async_mode='asgi',
     cors_allowed_origins=[
-        'https://cloud-forest-chat-production.up.railway.app',
+        'https://klymo-production.up.railway.app',
+        'https://klymochat.vercel.app',
         'http://localhost:3000',
         'http://127.0.0.1:3000',
     ],
