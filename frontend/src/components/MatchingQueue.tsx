@@ -196,7 +196,17 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
                     </Button>
                 </>
             )}
-            {status.startsWith('Error') || status.startsWith('Connection error') ? (
+            {status.includes('wait') ? (
+                <>
+                    <h2 className="text-3xl font-black uppercase bg-yellow-400 text-black px-4 border-[3px] border-black">
+                        Take a Break
+                    </h2>
+                    <p className="font-bold">{status.replace('Error: ', '')}</p>
+                    <Button onClick={() => window.location.reload()} variant="primary">
+                        CHECK AGAIN
+                    </Button>
+                </>
+            ) : (status.startsWith('Error') || status.startsWith('Connection error')) ? (
                 <>
                     <h2 className="text-3xl font-black uppercase bg-red-500 text-white px-4 border-[3px] border-black">
                         Connection Failed
