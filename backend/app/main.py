@@ -10,6 +10,16 @@ import app.websocket.events # Register Socket.IO Events
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure database schema exists
+    try:
+        from app.core.database import engine, Base
+        from app.models import sql_models
+        print("Creating database tables...")
+        Base.metadata.create_all(bind=engine)
+        print("Database tables created successfully.")
+    except Exception as e:
+        print(f"Error creating database tables: {e}")
+
     redis_client.connect()
     yield
     redis_client.close()

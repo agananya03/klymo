@@ -17,7 +17,7 @@ class User(Base):
     verified_at = Column(DateTime, nullable=False) # Constraint from image
     created_at = Column(DateTime, default=func.now())
     is_banned = Column(Boolean, default=False)
-    trust_score = Column(Integer, default=100)
+    # trust_score removed to match existing DB schema
 
     # Relationships (optional for now, but good for ORM)
     sessions_as_user1 = relationship("Session", foreign_keys="[Session.user1_device_id]")
@@ -34,7 +34,7 @@ class Session(Base):
     user1_device_id = Column(String(64), ForeignKey("users.device_id"), nullable=False)
     user2_device_id = Column(String(64), ForeignKey("users.device_id"), nullable=False)
     created_at = Column(DateTime, default=func.now())
-    is_active = Column(Boolean, default=True)
+    # is_active removed to match existing DB schema
     ended_at = Column(DateTime, nullable=True)
 
     # Relationships

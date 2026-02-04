@@ -34,7 +34,14 @@ async def verify_gender_from_bytes(image_bytes: bytes) -> List[Dict[str, Any]]:
             
             if response.status_code != 200:
                 error_msg = response.text
-                logger.error(f"HF API Error ({response.status_code}): {error_msg}")
+                logger.error(f"HF API Error ({response.status_code}): {error_msg[:200]}...") # Log only start
+                
+                if "<html" in error_msg.lower() or "<svg" in error_msg.lower():
+                    raise ValueError(f"AI Service Unavailable (Status {response.status_code})")
+                
+                if response.status_code == 503:
+                    raise ValueError("AI is warming up. Please try again in 30 seconds.")
+
                 raise ValueError(f"AI Service Error: {error_msg}")
             
             result = response.json()
