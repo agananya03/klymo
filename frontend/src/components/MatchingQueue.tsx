@@ -59,7 +59,16 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
 
                 setStatus('matched');
                 setTimeout(() => {
-                    onMatchFound(data);
+                    // Adapt Backend Data Structure to Frontend Component Expectations
+                    const formattedSession = {
+                        session_id: data.session_id,
+                        partner: {
+                            device_id: data.partner_id,
+                            gender: data.partner_gender,
+                            nickname: 'Stranger' // Default nickname since backend doesn't store it yet
+                        }
+                    };
+                    onMatchFound(formattedSession);
                 }, 1500);
             });
 
