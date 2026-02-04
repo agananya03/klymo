@@ -30,7 +30,9 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
             const deviceId = await generateDeviceId();
             const socket = getSocket();
 
-            if (!socket.connected) {
+            if (socket.connected) {
+                setStatus('Select a preference');
+            } else {
                 socket.auth = { device_id: deviceId };
                 socket.connect();
             }
@@ -57,7 +59,7 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
 
                 setStatus('matched');
                 setTimeout(() => {
-                    onMatchFound(data.session_id);
+                    onMatchFound(data);
                 }, 1500);
             });
 
@@ -194,6 +196,17 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
                     </Button>
                 </>
             )}
+            {status.startsWith('Error') || status.startsWith('Connection error') ? (
+                <>
+                    <h2 className="text-3xl font-black uppercase bg-red-500 text-white px-4 border-[3px] border-black">
+                        Connection Failed
+                    </h2>
+                    <p className="font-bold">{status}</p>
+                    <Button onClick={() => window.location.reload()} variant="primary">
+                        RETRY
+                    </Button>
+                </>
+            ) : null}
         </Card>
     );
 }
