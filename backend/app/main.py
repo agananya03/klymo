@@ -55,6 +55,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://cloud-forest-chat-production.up.railway.app",
+        "https://klymochat.vercel.app",
         "http://localhost:3000",  # Keep for local testing
         "http://127.0.0.1:3000",
     ],
