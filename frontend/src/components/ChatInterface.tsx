@@ -220,7 +220,9 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                 </div>
                 <div className="flex gap-2">
                     <Button onClick={() => setShowReportModal(true)} variant="outline" size="sm" className="px-2 border-2">⚠️</Button>
-                    <Button onClick={handleNext} variant="secondary" size="sm" className="font-bold border-2">NEXT ➔</Button>
+                    {sessionData.partner.device_id !== 'AI_PARTNER' && sessionData.partner.nickname !== 'AI Partner' && (
+                        <Button onClick={handleNext} variant="secondary" size="sm" className="font-bold border-2">NEXT ➔</Button>
+                    )}
                     <Button onClick={handleLeave} variant="outline" size="sm" className="px-2 border-red-500 text-red-500 border-2">✕</Button>
                 </div>
             </div>

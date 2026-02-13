@@ -5,6 +5,8 @@ from app.core.socket_server import sio
 from app.core.database import SessionLocal
 from app.models.sql_models import User, Session, Report
 from app.services.matching_service import mapping_service
+import time as import_time
+from datetime import datetime as import_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +14,10 @@ logger = logging.getLogger(__name__)
 async def connect(sid, environ, auth):
     print(f"DEBUG: Connect Event {sid}")
     # ... (auth logic) ...
+
+    # AI Service Import
+    from app.services.ai_service import ai_service
+
     device_id = None
     if auth and 'device_id' in auth:
         device_id = auth['device_id']
@@ -65,18 +71,19 @@ async def disconnect(sid, *args):
             # Notify partner
             await sio.emit('partner_left', {'reason': 'disconnected'}, room=session_id, skip_sid=sid)
             
-            # Close session in DB
-            db = SessionLocal()
-            try:
-                sess = db.query(Session).filter(Session.session_id == session_id).first()
-                if sess and sess.is_active:
-                    sess.is_active = False
-                    sess.ended_at = func.now()
-                    db.commit()
-            except Exception as e:
-                logger.error(f"Error closing session on disconnect: {e}")
-            finally:
-                db.close()
+            # Close session in DB (only if real session UUID)
+            if session_id and not session_id.startswith('ai_session_'):
+                db = SessionLocal()
+                try:
+                    sess = db.query(Session).filter(Session.session_id == session_id).first()
+                    if sess and sess.is_active:
+                        sess.is_active = False
+                        sess.ended_at = func.now()
+                        db.commit()
+                except Exception as e:
+                    logger.error(f"Error closing session on disconnect: {e}")
+                finally:
+                    db.close()
 
 @sio.event
 async def join_queue(sid, data):
@@ -177,6 +184,8 @@ async def send_message(sid, data):
     
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
+        is_ai_session = user_session.get('is_ai_session', False)
+        ai_interests = user_session.get('ai_interests', '')
 
     # RELAY ONLY - NO STORAGE
     response = {
@@ -185,6 +194,68 @@ async def send_message(sid, data):
         'timestamp': 'now'
     }
     await sio.emit('new_message', response, room=session_id)
+
+    # AI RESPONSE HANDLING
+    if is_ai_session:
+        from app.services.ai_service import ai_service
+        # Simulate typing delay?
+        await sio.emit('partner_typing', {'is_typing': True}, room=session_id, skip_sid=sid)
+        
+        reply_content = await ai_service.generate_response(content, interests=ai_interests)
+        
+        await sio.emit('partner_typing', {'is_typing': False}, room=session_id, skip_sid=sid)
+        
+        ai_msg = {
+            'sender_id': 'AI_PARTNER',
+            'content': reply_content,
+            'timestamp': import_datetime.utcnow().isoformat()
+        }
+        await sio.emit('new_message', ai_msg, room=session_id)
+
+@sio.event
+async def join_ai_queue(sid, data):
+    print(f"DEBUG: join_ai_queue {sid} {data}")
+    interests = data.get('interests', '')
+    
+    async with sio.session(sid) as user_session:
+        device_id = user_session.get('device_id')
+    
+    print(f"DEBUG: Session Device ID: {device_id}")
+    
+    if not device_id: 
+        print(f"DEBUG: join_ai_queue REJECTED - No device_id for sid {sid}")
+        await sio.emit('error', {'message': 'Connection invalid (No Device ID). Please refresh.'}, room=sid)
+        return
+
+    # Create a virtual session ID for AI
+    session_id = f"ai_session_{device_id}_{int(import_time.time())}"
+    
+    # Store interests in session for context
+    async with sio.session(sid) as user_session:
+        user_session['active_session_id'] = session_id
+        user_session['ai_interests'] = interests
+        user_session['is_ai_session'] = True
+
+    await sio.enter_room(sid, session_id)
+    
+    # Match Found Emission
+    match_payload = {
+        'session_id': session_id,
+        'partner_id': 'AI_PARTNER',
+        'partner_gender': 'AI',
+        'is_ai': True
+    }
+    await sio.emit('match_found', match_payload, room=sid)
+
+    # Initial AI Greeting
+    from app.services.ai_service import ai_service
+    greeting = await ai_service.generate_response("Hello!", interests=interests)
+    
+    await sio.emit('new_message', {
+        'sender_id': 'AI_PARTNER',
+        'content': greeting,
+        'timestamp': import_datetime.utcnow().isoformat()
+    }, room=sid)
 
 @sio.event
 async def leave_chat(sid, data):
@@ -196,20 +267,25 @@ async def leave_chat(sid, data):
         # Clear active session
         if 'active_session_id' in user_session:
             del user_session['active_session_id']
+            # Clear AI flags
+            if 'is_ai_session' in user_session:
+                del user_session['is_ai_session']
         
     await sio.leave_room(sid, session_id)
     await sio.emit('partner_left', {'reason': 'left'}, room=session_id)
     
-    # DB Update to close session
-    db = SessionLocal()
-    try:
-        sess = db.query(Session).filter(Session.session_id == session_id).first()
-        if sess:
-            sess.is_active = False
-            sess.ended_at = func.now()
-            db.commit()
-    finally:
-        db.close()
+    
+    # DB Update to close session (only if real session UUID)
+    if session_id and not session_id.startswith('ai_session_'):
+        db = SessionLocal()
+        try:
+            sess = db.query(Session).filter(Session.session_id == session_id).first()
+            if sess:
+                sess.is_active = False
+                sess.ended_at = func.now()
+                db.commit()
+        finally:
+            db.close()
 
 @sio.event
 async def typing_start(sid, data):

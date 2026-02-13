@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     HUGGINGFACE_API_KEY: Union[str, None] = None
     HUGGINGFACE_MODEL_URL: Union[str, None] = None
 
+    # Google Gemini
+    GEMINI_API_KEY: Union[str, None] = None
+
     @property
     def model_id(self) -> str:
         # Using a reliable gender classification model

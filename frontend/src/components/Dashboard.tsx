@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/Button';
 interface DashboardProps {
     onStartChat: () => void;
     onEditProfile: () => void;
+    onAI: () => void;
 }
 
-export default function Dashboard({ onStartChat, onEditProfile }: DashboardProps) {
+export default function Dashboard({ onStartChat, onEditProfile, onAI }: DashboardProps) {
     const [userCount, setUserCount] = useState<number | null>(null);
     const [activeFeature, setActiveFeature] = useState<'poll' | 'mood' | null>(null);
     const [hasVoted, setHasVoted] = useState(false);
@@ -113,6 +114,23 @@ export default function Dashboard({ onStartChat, onEditProfile }: DashboardProps
                                 </div>
                                 <h4 className="font-black uppercase text-xl">Mood Check</h4>
                                 <p className="text-sm font-bold mt-1">{hasMood ? 'VIBE CHECKED' : 'CHECK IN'}</p>
+                            </div>
+                        </button>
+                    </div>
+
+                    {/* AI Chat Button */}
+                    <div className="mt-4">
+                        <button
+                            onClick={onAI}
+                            className="group relative w-full"
+                        >
+                            <div className="absolute inset-0 bg-black translate-x-1 translate-y-1"></div>
+                            <div className="relative p-4 bg-gradient-to-r from-teal-400 to-cyan-300 border-[3px] border-black hover:-translate-y-1 hover:-translate-x-1 transition-transform h-full flex items-center justify-between">
+                                <div className="text-left">
+                                    <h4 className="font-black uppercase text-xl text-black">🤖 Chat with AI</h4>
+                                    <p className="text-sm font-bold mt-1 text-black">CREATE YOUR PERFECT PARTNER</p>
+                                </div>
+                                <div className="text-3xl animate-bounce">✨</div>
                             </div>
                         </button>
                     </div>

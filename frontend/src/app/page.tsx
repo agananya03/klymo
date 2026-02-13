@@ -6,11 +6,12 @@ import ProfileForm from "@/components/ProfileForm";
 import MatchingQueue from "@/components/MatchingQueue";
 import ChatInterface from "@/components/ChatInterface";
 import Dashboard from "@/components/Dashboard";
+import AIPartnerForm from "@/components/AIPartnerForm";
 import { useToast } from "@/components/Toast";
 import { generateDeviceId } from "@/utils/device-id";
 
 export default function Home() {
-  const [step, setStep] = useState<'dashboard' | 'verification' | 'profile' | 'matching' | 'chat' | null>(null);
+  const [step, setStep] = useState<'dashboard' | 'verification' | 'profile' | 'matching' | 'chat' | 'ai_setup' | null>(null);
   const [gender, setGender] = useState<string>('');
   const [sessionData, setSessionData] = useState<any>(null);
   const { info } = useToast();
@@ -78,7 +79,11 @@ export default function Home() {
 
         <div className="w-full transition-all duration-500 relative">
           {step === 'dashboard' && (
-            <Dashboard onStartChat={handleStartChat} onEditProfile={handleEditProfile} />
+            <Dashboard
+              onStartChat={handleStartChat}
+              onEditProfile={handleEditProfile}
+              onAI={() => setStep('ai_setup')}
+            />
           )}
 
           {step === 'verification' && (
@@ -91,6 +96,16 @@ export default function Home() {
 
           {step === 'matching' && (
             <MatchingQueue
+              onMatchFound={(data) => {
+                setSessionData(data);
+                setStep('chat');
+              }}
+            />
+          )}
+
+          {step === 'ai_setup' && (
+            <AIPartnerForm
+              onBack={() => setStep('dashboard')}
               onMatchFound={(data) => {
                 setSessionData(data);
                 setStep('chat');
