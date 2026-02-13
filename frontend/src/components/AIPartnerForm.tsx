@@ -45,7 +45,7 @@ export default function AIPartnerForm({ onBack, onMatchFound }: AIPartnerFormPro
             }
 
             socket.on('error', (err: any) => {
-                addLog(`Socket Error: ${err.message || JSON.stringify(err)}`);
+                console.error(`Socket Error: ${err.message || JSON.stringify(err)}`);
                 alert(`Connection Error: ${err.message || 'Unknown error'}`);
                 setIsLoading(false);
             });
