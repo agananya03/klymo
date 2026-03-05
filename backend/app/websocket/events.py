@@ -191,7 +191,7 @@ async def send_message(sid, data):
     response = {
         'sender_id': device_id,
         'content': content,
-        'timestamp': 'now'
+        'timestamp': import_datetime.utcnow().isoformat() + "Z"
     }
     await sio.emit('new_message', response, room=session_id)
 
@@ -208,7 +208,7 @@ async def send_message(sid, data):
         ai_msg = {
             'sender_id': 'AI_PARTNER',
             'content': reply_content,
-            'timestamp': import_datetime.utcnow().isoformat()
+            'timestamp': import_datetime.utcnow().isoformat() + "Z"
         }
         await sio.emit('new_message', ai_msg, room=session_id)
 
@@ -254,7 +254,7 @@ async def join_ai_queue(sid, data):
     await sio.emit('new_message', {
         'sender_id': 'AI_PARTNER',
         'content': greeting,
-        'timestamp': import_datetime.utcnow().isoformat()
+        'timestamp': import_datetime.utcnow().isoformat() + "Z"
     }, room=sid)
 
 @sio.event
