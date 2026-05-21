@@ -3,7 +3,158 @@ import redis
 import json
 import logging
 import os
+import time
+import threading
 from app.core.config import settings
+
+class MockRedis:
+    def __init__(self):
+        self._data = {}
+        self._ex = {}
+        self._lists = {}
+        self._lock = threading.Lock()
+        
+    def _is_expired(self, key):
+        if key in self._ex:
+            if time.time() > self._ex[key]:
+                self._data.pop(key, None)
+                self._lists.pop(key, None)
+                self._ex.pop(key, None)
+                return True
+        return False
+
+    def ping(self):
+        return True
+
+    def flushdb(self):
+        with self._lock:
+            self._data.clear()
+            self._ex.clear()
+            self._lists.clear()
+            return True
+
+    def register_script(self, script_str):
+        class MockScript:
+            def __init__(self, client):
+                self.client = client
+            def __call__(self, keys=None, args=None):
+                return None
+        return MockScript(self)
+
+    def get(self, key):
+        with self._lock:
+            if self._is_expired(key):
+                return None
+            return self._data.get(key)
+
+    def set(self, key, value, ex=None):
+        with self._lock:
+            self._data[key] = str(value)
+            if ex is not None:
+                self._ex[key] = time.time() + ex
+            else:
+                self._ex.pop(key, None)
+            return True
+
+    def setex(self, key, ttl, value):
+        return self.set(key, value, ex=ttl)
+
+    def delete(self, key):
+        with self._lock:
+            had_key = (key in self._data or key in self._lists)
+            self._data.pop(key, None)
+            self._lists.pop(key, None)
+            self._ex.pop(key, None)
+            return 1 if had_key else 0
+
+    def ttl(self, key):
+        with self._lock:
+            if key not in self._ex:
+                if key in self._data or key in self._lists:
+                    return -1
+                return -2
+            if self._is_expired(key):
+                return -2
+            return int(self._ex[key] - time.time())
+
+    def incr(self, key):
+        with self._lock:
+            if self._is_expired(key):
+                self._data[key] = "0"
+            val = int(self._data.get(key, 0)) + 1
+            self._data[key] = str(val)
+            return val
+
+    def expire(self, key, seconds):
+        with self._lock:
+            if key in self._data or key in self._lists:
+                self._ex[key] = time.time() + seconds
+                return True
+            return False
+
+    def rpush(self, key, *values):
+        with self._lock:
+            self._is_expired(key)
+            if key not in self._lists:
+                self._lists[key] = []
+            for val in values:
+                self._lists[key].append(str(val))
+            return len(self._lists[key])
+
+    def lpop(self, key):
+        with self._lock:
+            if self._is_expired(key):
+                return None
+            if key not in self._lists or not self._lists[key]:
+                return None
+            return self._lists[key].pop(0)
+
+    def lrange(self, key, start, end):
+        with self._lock:
+            if self._is_expired(key):
+                return []
+            if key not in self._lists:
+                return []
+            lst = self._lists[key]
+            if end == -1:
+                return lst[start:]
+            else:
+                return lst[start:end+1]
+
+    def lrem(self, key, count, value):
+        with self._lock:
+            if self._is_expired(key):
+                return 0
+            if key not in self._lists:
+                return 0
+            lst = self._lists[key]
+            removed = 0
+            if count == 0:
+                original_len = len(lst)
+                new_lst = [x for x in lst if x != value]
+                self._lists[key] = new_lst
+                removed = original_len - len(new_lst)
+            else:
+                if count > 0:
+                    for _ in range(count):
+                        if value in lst:
+                            lst.remove(value)
+                            removed += 1
+                        else:
+                            break
+                else:
+                    for _ in range(abs(count)):
+                        found_idx = -1
+                        for idx in range(len(lst)-1, -1, -1):
+                            if lst[idx] == value:
+                                found_idx = idx
+                                break
+                        if found_idx != -1:
+                            lst.pop(found_idx)
+                            removed += 1
+                        else:
+                            break
+            return removed
 
 class RedisClient:
     def __init__(self):
@@ -14,8 +165,9 @@ class RedisClient:
 
     def connect(self):
         if not settings.REDIS_ENABLED:
-            logging.info("Redis disabled in settings. Caching will be skipped.")
-            self.client = None
+            logging.info("Redis disabled in settings. Falling back to in-memory MockRedis.")
+            self.client = MockRedis()
+            self._register_scripts()
             return
 
         try:
@@ -56,8 +208,9 @@ class RedisClient:
         
         except Exception as e:
             self.last_error = str(e)
-            logging.warning(f"Failed to connect to Redis: {e}. Caching will be disabled.")
-            self.client = None
+            logging.warning(f"Failed to connect to Redis: {e}. Falling back to in-memory MockRedis.")
+            self.client = MockRedis()
+            self._register_scripts()
 
     def close(self):
         if self.pool:

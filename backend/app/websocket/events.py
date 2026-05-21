@@ -7,6 +7,7 @@ from app.models.sql_models import User, Session, Report
 from app.services.matching_service import mapping_service
 import time as import_time
 from datetime import datetime as import_datetime
+from socketio.exceptions import ConnectionRefusedError
 
 logger = logging.getLogger(__name__)
 
@@ -31,27 +32,29 @@ async def connect(sid, environ, auth):
 
     if not device_id:
         print("DEBUG: Connect Rejected - No Device ID")
-        return False 
+        raise ConnectionRefusedError('Identity missing. Please verify first.')
 
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.device_id == device_id).first()
         if not user:
             print(f"DEBUG: Connect Rejected - User Not Found {device_id}")
-            return False
+            raise ConnectionRefusedError('Identity missing. Please verify first.')
             
         if user.is_banned:
             print(f"DEBUG: Connect Rejected - Banned User {device_id}")
-            return False
+            raise ConnectionRefusedError('User is banned.')
         
         await sio.save_session(sid, {'device_id': device_id})
         await sio.enter_room(sid, f"user_{device_id}")
         
         print(f"DEBUG: Connected & Session Saved: {device_id}")
         return True
+    except ConnectionRefusedError:
+        raise
     except Exception as e:
         print(f"DEBUG: Connect Error: {e}")
-        return False
+        raise ConnectionRefusedError(f'Internal Server Error: {str(e)}')
     finally:
         db.close()
 
@@ -76,8 +79,7 @@ async def disconnect(sid, *args):
                 db = SessionLocal()
                 try:
                     sess = db.query(Session).filter(Session.session_id == session_id).first()
-                    if sess and sess.is_active:
-                        sess.is_active = False
+                    if sess and sess.ended_at is None:
                         sess.ended_at = func.now()
                         db.commit()
                 except Exception as e:
@@ -116,10 +118,15 @@ async def join_queue(sid, data):
             partner_id = result['partner_id']
             partner_gender = result['partner_gender']
             
+            partner = db.query(User).filter(User.device_id == partner_id).first()
+            partner_nickname = partner.nickname if (partner and partner.nickname) else "Stranger"
+            user_nickname = user.nickname if user.nickname else "Stranger"
+
             match_payload = {
                 'session_id': session_id,
                 'partner_id': partner_id,
-                'partner_gender': partner_gender
+                'partner_gender': partner_gender,
+                'partner_nickname': partner_nickname
             }
             
             await sio.emit('match_found', match_payload, room=sid)
@@ -127,7 +134,8 @@ async def join_queue(sid, data):
             partner_payload = {
                 'session_id': session_id,
                 'partner_id': device_id,
-                'partner_gender': user.gender
+                'partner_gender': user.gender,
+                'partner_nickname': user_nickname
             }
             # Put both users in the room!
             await sio.enter_room(sid, session_id)
@@ -162,6 +170,15 @@ async def join_queue(sid, data):
         await sio.emit('error', {'message': str(e)}, room=sid)
     finally:
         db.close()
+
+@sio.event
+async def leave_queue(sid, data):
+    print(f"DEBUG: leave_queue called for {sid}")
+    async with sio.session(sid) as user_session:
+        device_id = user_session.get('device_id')
+    if device_id:
+        print(f"DEBUG: Removing {device_id} from queue")
+        mapping_service.leave_queue(device_id)
 
 @sio.event
 async def join_session(sid, data):
@@ -280,8 +297,7 @@ async def leave_chat(sid, data):
         db = SessionLocal()
         try:
             sess = db.query(Session).filter(Session.session_id == session_id).first()
-            if sess:
-                sess.is_active = False
+            if sess and sess.ended_at is None:
                 sess.ended_at = func.now()
                 db.commit()
         finally:

@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 try:
     import google.generativeai as genai
     HAS_GENAI = True
@@ -6,9 +10,6 @@ except ImportError:
     logger.warning("google.generativeai package not found. AI features disabled.")
 
 from app.core.config import settings
-import logging
-
-logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self):

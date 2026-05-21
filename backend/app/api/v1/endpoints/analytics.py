@@ -20,7 +20,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     
     # 2. Session Stats
     total_sessions = db.query(Session).count()
-    active_sessions = db.query(Session).filter(Session.is_active == True).count()
+    active_sessions = db.query(Session).filter(Session.ended_at.is_(None)).count()
     
     # 3. Reports
     total_reports = db.query(Report).count()

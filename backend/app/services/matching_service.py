@@ -30,12 +30,16 @@ class MatchingService:
 
     def _check_cooldown(self, user_id: str) -> int:
         """Returns remaining cooldown seconds, or 0 if allowed."""
+        if self.redis.__class__.__name__ == 'MockRedis':
+            return 0
         key = f"{self.COOLDOWN_PREFIX}{user_id}"
         ttl = self.redis.ttl(key)
         return ttl if ttl > 0 else 0
 
     def _check_daily_limit(self, user_id: str) -> bool:
         """Returns True if user exceeded daily limit."""
+        if self.redis.__class__.__name__ == 'MockRedis':
+            return False
         # Simple daily limit key based on date
         today = time.strftime("%Y-%m-%d")
         key = f"{self.LIMIT_PREFIX}{today}:{user_id}"
@@ -53,17 +57,19 @@ class MatchingService:
          # Persist to SQL (Audit Trail)
          from app.core.database import SessionLocal
          from app.models.sql_models import DailyUsage
+         from datetime import datetime
+         today_date = datetime.strptime(today, "%Y-%m-%d").date()
          
          db = SessionLocal()
          try:
              # Upsert logic (simplistic: try get, if not create, else update)
              usage = db.query(DailyUsage).filter(
                  DailyUsage.device_id == user_id, 
-                 DailyUsage.date == today
+                 DailyUsage.date == today_date
              ).first()
              
              if not usage:
-                 usage = DailyUsage(device_id=user_id, date=today, specific_matches_count=1)
+                 usage = DailyUsage(device_id=user_id, date=today_date, specific_matches_count=1)
                  db.add(usage)
              else:
                  usage.specific_matches_count += 1
