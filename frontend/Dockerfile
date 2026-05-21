@@ -9,10 +9,12 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Explicitly set environment variables for build
-# Railway will inject these automatically, but we make them available to Next.js
-ENV NEXT_PUBLIC_API_URL=https://cloud-forest-production.up.railway.app
-ENV NEXT_PUBLIC_SOCKET_URL=https://cloud-forest-production.up.railway.app
+# Declare build-time arguments (Render will inject environment variables defined in the settings dashboard as ARGs)
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_SOCKET_URL
+
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL}
 
 # Build the application
 RUN npm run build

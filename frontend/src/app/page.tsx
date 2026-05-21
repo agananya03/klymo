@@ -100,6 +100,7 @@ export default function Home() {
                 setSessionData(data);
                 setStep('chat');
               }}
+              onCancel={() => setStep('dashboard')}
             />
           )}
 

@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { generateDeviceId } from '@/utils/device-id';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { API_BASE_URL } from '@/utils/api-config';
 
 interface CameraCaptureProps {
     onCapture?: (imageUrl: string) => void;
@@ -80,7 +81,7 @@ export default function CameraCapture({ onCapture }: CameraCaptureProps) {
 
             stopCamera();
 
-            const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const API_BASE = API_BASE_URL;
 
             try {
                 const deviceId = await generateDeviceId();

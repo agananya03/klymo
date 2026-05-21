@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 
+import { API_BASE_URL } from '@/utils/api-config';
+
 interface ProfileFormProps {
     onProfileComplete: (preference: string) => void;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = API_BASE_URL;
 
 export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
     const [nickname, setNickname] = useState('');

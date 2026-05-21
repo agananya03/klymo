@@ -8,11 +8,12 @@ import { Card } from '@/components/ui/Card';
 
 interface MatchingQueueProps {
     onMatchFound: (sessionData: any) => void;
+    onCancel: () => void;
 }
 
 const QUEUE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
+export default function MatchingQueue({ onMatchFound, onCancel }: MatchingQueueProps) {
     const [status, setStatus] = useState('Connecting...');
     const [preference, setPreference] = useState<'male' | 'female' | 'any'>('any');
     const [queueTime, setQueueTime] = useState(0);
@@ -26,70 +27,122 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
             Notification.requestPermission();
         }
 
-        const connectAndJoin = async () => {
-            const deviceId = await generateDeviceId();
-            const socket = getSocket();
+        const socket = getSocket();
+        let isMounted = true;
 
-            if (socket.connected) {
-                setStatus('Select a preference');
-            } else {
-                socket.auth = { device_id: deviceId };
-                socket.connect();
+        const handleConnect = () => {
+            if (isMounted) setStatus('Select a preference');
+        };
+
+        const handleConnectError = (err: any) => {
+            if (!isMounted) return;
+            console.error('Socket connect_error:', err);
+            
+            // Extract the message from various possible locations in Socket.IO v4 error object
+            let msg = '';
+            if (typeof err === 'string') {
+                msg = err;
+            } else if (err) {
+                msg = err.data || err.message || (typeof err.description === 'string' ? err.description : '') || '';
             }
 
-            socket.on('connect', () => {
-                setStatus('Select a preference');
-            });
+            if (msg.includes('User not found') || msg.includes('Identity missing')) {
+                localStorage.removeItem('klymo_is_verified');
+                setStatus('Identity missing. Redirecting to verification...');
+                setTimeout(() => {
+                    if (isMounted) {
+                        window.location.reload();
+                    }
+                }, 2000);
+            } else {
+                setStatus(`Connection error: ${msg || 'Connection rejected or offline'}`);
+            }
+        };
 
-            socket.on('connect_error', (err) => {
-                setStatus(`Connection error: ${err.message}`);
-            });
-
-            socket.on('queue_status', (data) => {
+        const handleQueueStatus = (data: any) => {
+            if (isMounted) {
                 setStatus('Searching');
                 startQueueTimer();
-            });
+            }
+        };
 
-            socket.on('match_found', (data: any) => {
-                console.log('Match found:', data);
+        const handleMatchFound = (data: any) => {
+            if (!isMounted) return;
+            console.log('Match found:', data);
 
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification("Klymo Chat", { body: "Match Found! Connecting you now..." });
-                }
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification("Klymo Chat", { body: "Match Found! Connecting you now..." });
+            }
 
-                setStatus('matched');
-                setTimeout(() => {
+            setStatus('matched');
+            setTimeout(() => {
+                if (isMounted) {
                     // Adapt Backend Data Structure to Frontend Component Expectations
                     const formattedSession = {
                         session_id: data.session_id,
                         partner: {
                             device_id: data.partner_id,
                             gender: data.partner_gender,
-                            nickname: 'Stranger' // Default nickname since backend doesn't store it yet
+                            nickname: data.partner_nickname || 'Stranger'
                         }
                     };
                     onMatchFound(formattedSession);
-                }, 1500);
-            });
-
-            socket.on('error', (data) => {
-                setStatus(`Error: ${data.message}`);
-                clearQueueTimer();
-            });
-
-            return () => {
-                socket.off('connect');
-                socket.off('connect_error');
-                socket.off('queue_status');
-                socket.off('match_found');
-                socket.off('error');
-            };
+                }
+            }, 1500);
         };
 
-        connectAndJoin();
+        const handleError = (data: any) => {
+            if (!isMounted) return;
+            const msg = data?.message || '';
+            if (msg.includes('User not found') || msg.includes('Identity missing')) {
+                localStorage.removeItem('klymo_is_verified');
+                setStatus('Identity missing. Redirecting to verification...');
+                setTimeout(() => {
+                    if (isMounted) {
+                        window.location.reload();
+                    }
+                }, 2000);
+            } else {
+                setStatus(`Error: ${data.message}`);
+                clearQueueTimer();
+            }
+        };
+
+        // Attach listeners immediately
+        socket.on('connect', handleConnect);
+        socket.on('connect_error', handleConnectError);
+        socket.on('queue_status', handleQueueStatus);
+        socket.on('match_found', handleMatchFound);
+        socket.on('error', handleError);
+
+        if (socket.connected) {
+            setStatus('Select a preference');
+        }
+
+        // Fetch device ID and connect socket
+        generateDeviceId().then((deviceId) => {
+            if (!isMounted) return;
+            if (!socket.connected) {
+                socket.auth = { device_id: deviceId };
+                socket.connect();
+            } else {
+                socket.auth = { device_id: deviceId };
+            }
+        }).catch((err) => {
+            console.error('Error generating/retrieving device ID:', err);
+            if (isMounted) {
+                setStatus('Error initializing identity');
+            }
+        });
 
         return () => {
+            isMounted = false;
             clearQueueTimer();
+            socket.off('connect', handleConnect);
+            socket.off('connect_error', handleConnectError);
+            socket.off('queue_status', handleQueueStatus);
+            socket.off('match_found', handleMatchFound);
+            socket.off('error', handleError);
         };
     }, [onMatchFound]);
 
@@ -134,7 +187,7 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
         const socket = getSocket();
         socket.emit('leave_queue', {});
         clearQueueTimer();
-        setStatus('Select a preference');
+        onCancel();
     };
 
     const formatTime = (seconds: number) => {
@@ -162,6 +215,9 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
                         </Button>
                         <Button onClick={() => handleJoin('any')} variant="accent" size="lg" className="w-full">
                             Anyone
+                        </Button>
+                        <Button onClick={onCancel} variant="outline" className="w-full border-black text-black hover:bg-gray-50 mt-2">
+                            CANCEL
                         </Button>
                     </div>
                 </>
@@ -200,9 +256,14 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
                         No Luck
                     </h2>
                     <p className="font-bold">Try again later.</p>
-                    <Button onClick={() => setStatus('Select a preference')} variant="primary">
-                        TRY AGAIN
-                    </Button>
+                    <div className="flex flex-col w-full gap-3 relative z-10">
+                        <Button onClick={() => setStatus('Select a preference')} variant="primary" className="w-full">
+                            TRY AGAIN
+                        </Button>
+                        <Button onClick={onCancel} variant="outline" className="w-full border-black text-black hover:bg-gray-50">
+                            BACK TO DASHBOARD
+                        </Button>
+                    </div>
                 </>
             )}
             {status.includes('wait') ? (
@@ -211,9 +272,14 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
                         Take a Break
                     </h2>
                     <p className="font-bold">{status.replace('Error: ', '')}</p>
-                    <Button onClick={() => window.location.reload()} variant="primary">
-                        CHECK AGAIN
-                    </Button>
+                    <div className="flex flex-col w-full gap-3 relative z-10">
+                        <Button onClick={() => window.location.reload()} variant="primary" className="w-full">
+                            CHECK AGAIN
+                        </Button>
+                        <Button onClick={onCancel} variant="outline" className="w-full border-black text-black hover:bg-gray-50">
+                            BACK TO DASHBOARD
+                        </Button>
+                    </div>
                 </>
             ) : (status.startsWith('Error') || status.startsWith('Connection error')) ? (
                 <>
@@ -221,9 +287,14 @@ export default function MatchingQueue({ onMatchFound }: MatchingQueueProps) {
                         Connection Failed
                     </h2>
                     <p className="font-bold">{status}</p>
-                    <Button onClick={() => window.location.reload()} variant="primary">
-                        RETRY
-                    </Button>
+                    <div className="flex flex-col w-full gap-3 relative z-10">
+                        <Button onClick={() => window.location.reload()} variant="primary" className="w-full">
+                            RETRY
+                        </Button>
+                        <Button onClick={onCancel} variant="outline" className="w-full border-black text-black hover:bg-gray-50">
+                            BACK TO DASHBOARD
+                        </Button>
+                    </div>
                 </>
             ) : null}
         </Card>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { getSocket } from '@/utils/socket';
@@ -16,47 +16,89 @@ export default function AIPartnerForm({ onBack, onMatchFound }: AIPartnerFormPro
     const [isLoading, setIsLoading] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
 
+    const matchFoundListenerRef = useRef<any>(null);
+
     useEffect(() => {
-        const connectSocket = async () => {
-            const socket = getSocket();
+        const socket = getSocket();
+        let isMounted = true;
 
-            // Ensure we have an ID
-            const deviceId = await generateDeviceId();
+        const handleConnect = () => {
+            if (isMounted) {
+                console.log("Socket 'connect' event received!");
+                setIsConnected(true);
+            }
+        };
+
+        const handleError = (err: any) => {
+            if (!isMounted) return;
+            console.error('Socket error event:', err);
+            let msg = '';
+            if (typeof err === 'string') {
+                msg = err;
+            } else if (err) {
+                msg = err.message || err.data || '';
+            }
+            if (msg.includes('User not found') || msg.includes('Identity missing') || msg.includes('gender not found')) {
+                localStorage.removeItem('klymo_is_verified');
+                alert('Identity missing or invalid. Redirecting to verification...');
+                window.location.reload();
+            } else {
+                alert(`Error: ${msg || 'An error occurred'}`);
+            }
+            setIsLoading(false);
+        };
+
+        const handleConnectError = (err: any) => {
+            if (!isMounted) return;
+            console.error('Socket connect_error event:', err);
+            let msg = '';
+            if (typeof err === 'string') {
+                msg = err;
+            } else if (err) {
+                msg = err.data || err.message || (typeof err.description === 'string' ? err.description : '') || '';
+            }
+            if (msg.includes('User not found') || msg.includes('Identity missing')) {
+                localStorage.removeItem('klymo_is_verified');
+                alert('Identity missing. Redirecting to verification...');
+                window.location.reload();
+            } else {
+                alert(`Connection Error: ${msg || 'Connection rejected or offline'}`);
+            }
+            setIsLoading(false);
+        };
+
+        socket.on('connect', handleConnect);
+        socket.on('connect_error', handleConnectError);
+        socket.on('error', handleError);
+
+        if (socket.connected) {
+            console.log("Socket check: Connected = true");
+            setIsConnected(true);
+        }
+
+        generateDeviceId().then((deviceId) => {
+            if (!isMounted) return;
             console.log(`Device ID: ${deviceId}`);
-
             if (!socket.connected) {
                 console.log("Socket connecting...");
                 socket.auth = { device_id: deviceId };
                 socket.connect();
             } else {
                 console.log("Socket already connected");
-                // Force re-auth update for future
                 socket.auth = { device_id: deviceId };
             }
-
-            socket.on('connect', () => {
-                console.log("Socket 'connect' event received!");
-                setIsConnected(true);
-            });
-
-            if (socket.connected) {
-                console.log("Socket check: Connected = true");
-                setIsConnected(true);
-            }
-
-            socket.on('error', (err: any) => {
-                console.error(`Socket Error: ${err.message || JSON.stringify(err)}`);
-                alert(`Connection Error: ${err.message || 'Unknown error'}`);
-                setIsLoading(false);
-            });
-        };
-        connectSocket();
+        }).catch((err) => {
+            console.error('Error generating device ID:', err);
+        });
 
         return () => {
-            const socket = getSocket();
-            socket.off('connect');
-            socket.off('error');
-            socket.off('match_found'); // Clean up
+            isMounted = false;
+            socket.off('connect', handleConnect);
+            socket.off('connect_error', handleConnectError);
+            socket.off('error', handleError);
+            if (matchFoundListenerRef.current) {
+                socket.off('match_found', matchFoundListenerRef.current);
+            }
         };
     }, []);
 
@@ -66,10 +108,12 @@ export default function AIPartnerForm({ onBack, onMatchFound }: AIPartnerFormPro
         console.log("Starting chat...");
         const socket = getSocket();
 
-        // Remove previous listeners to avoid duplicates if clicked multiple times (though button disabled)
-        socket.off('match_found');
+        // Remove previous listener specifically
+        if (matchFoundListenerRef.current) {
+            socket.off('match_found', matchFoundListenerRef.current);
+        }
 
-        socket.on('match_found', (data: any) => {
+        const handleMatchFound = (data: any) => {
             console.log(`'match_found' received! Session: ${data.session_id}`);
 
             // Adapt Backend Data Structure
@@ -88,7 +132,10 @@ export default function AIPartnerForm({ onBack, onMatchFound }: AIPartnerFormPro
             } else {
                 console.error("ERROR: onMatchFound callback missing!");
             }
-        });
+        };
+
+        matchFoundListenerRef.current = handleMatchFound;
+        socket.on('match_found', handleMatchFound);
 
         console.log(`Emitting 'join_ai_queue' with interests: ${interests}`);
         socket.emit('join_ai_queue', { interests });

@@ -7,11 +7,12 @@ let socket: Socket | null = null;
 
 export const getSocket = (): Socket => {
     if (!socket) {
+        const isSecure = SOCKET_URL.startsWith('https');
         socket = io(SOCKET_URL, {
             path: '/socket.io',
             autoConnect: false,
             transports: ['websocket', 'polling'],
-            secure: true, // Use secure connection for Railway
+            secure: isSecure,
         });
     }
     return socket;
