@@ -84,7 +84,7 @@ class MatchingService:
         key = f"{self.COOLDOWN_PREFIX}{user_id}"
         self.redis.set(key, "1", ex=self.COOLDOWN_SECONDS)
 
-    def find_match(self, user_id: str, gender: str, preference: str) -> Dict[str, Union[str, int]]:
+    def find_match(self, user_id: str, gender: str, preference: str, interests: list = None) -> Dict[str, Union[str, int]]:
         """
         Main matching algorithms.
         Returns: 
@@ -154,39 +154,57 @@ class MatchingService:
                         is_compatible = True
                 
                 if is_compatible:
-                    # 6. Match Found
-                    sorted_ids = sorted([user_id, c_id])
-                    session_id = f"session_{sorted_ids[0]}_{sorted_ids[1]}_{int(time.time())}"
+                    # 6. Interest-Based Match Check
+                    c_interests = candidate.get("interests", [])
+                    my_interests = interests or []
                     
-                    # Only increment limit if specific preference was used
-                    if preference != "any":
-                        self._increment_daily_limit(user_id)
+                    # Calculate common interests
+                    common = list(set(my_interests) & set(c_interests))
                     
-                    # For partner, we don't know their preference here easily without checking.
-                    # Ideally we should decrement their limit if *they* had a preference.
-                    # But the candidate object has 'preference'.
-                    if c_pref != "any":
-                        self._increment_daily_limit(c_id)
+                    should_match = False
+                    common_interest = None
+                    
+                    if len(common) > 0:
+                        # Match immediately if there is a shared interest (priority matching)
+                        should_match = True
+                        common_interest = common[0]
+                    else:
+                        # Fallback to random matching after the candidate has waited for 10 seconds in queue
+                        elapsed = time.time() - candidate.get("joined_at", 0)
+                        if elapsed >= 10.0:
+                            should_match = True
+                            
+                    if should_match:
+                        # Match Found
+                        sorted_ids = sorted([user_id, c_id])
+                        session_id = f"session_{sorted_ids[0]}_{sorted_ids[1]}_{int(time.time())}"
+                        
+                        # Only increment limit if specific preference was used
+                        if preference != "any":
+                            self._increment_daily_limit(user_id)
+                        
+                        if c_pref != "any":
+                            self._increment_daily_limit(c_id)
 
-                    self._set_cooldown(user_id)
-                    self._set_cooldown(c_id)
-                    
-                    logger.info(f"Match SUCCESS: {user_id} <-> {c_id}")
-                    return {
-                        "status": "matched",
-                        "session_id": session_id,
-                        "partner_id": c_id,
-                        "partner_gender": c_gender
-                    }
+                        self._set_cooldown(user_id)
+                        self._set_cooldown(c_id)
+                        
+                        logger.info(f"Match SUCCESS: {user_id} <-> {c_id}")
+                        match_result = {
+                            "status": "matched",
+                            "session_id": session_id,
+                            "partner_id": c_id,
+                            "partner_gender": c_gender
+                        }
+                        if common_interest:
+                            match_result["common_interest"] = common_interest
+                        return match_result
+                    else:
+                        # Compatible but no interest match, and candidate has waited < 10s.
+                        # Move them to tail to preserve their priority window for someone with matching interests.
+                        self.redis.rpush(queue_name, candidate_json)
                 else:
-                    # Not compatible: Return to TAIL to give others a chance?
-                    # Or HEAD to keep priority?
-                    # Standard FIFO: If not compatible with ME, they might be compatible with next person.
-                    # If I put them at TAIL, they lose their spot. 
-                    # Ideally I put them back at HEAD? But then I can't look at next person.
-                    # Valid Strategy: Rotate Queue. Pop Head, Check, Push Tail.
-                    # If I don't match, I leave them at Tail. 
-                    # This shuffles the queue order slightly but allows deep search.
+                    # Not compatible: Return to TAIL to give others a chance
                     self.redis.rpush(queue_name, candidate_json)
             
             # End of queue loop
@@ -212,7 +230,8 @@ class MatchingService:
             "user_id": user_id,
             "gender": gender,
             "preference": preference,
-            "joined_at": time.time()
+            "joined_at": time.time(),
+            "interests": interests or []
         }
         
         # RPUSH to add to TAIL (Right) of the list (Newest users wait at back)

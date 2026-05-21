@@ -8,6 +8,7 @@ from app.services.matching_service import mapping_service
 import time as import_time
 from datetime import datetime as import_datetime
 from socketio.exceptions import ConnectionRefusedError
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,7 @@ async def join_queue(sid, data):
         return
 
     preference = data.get('preference', 'any')
+    interests = data.get('interests', [])
     
     db = SessionLocal()
     try:
@@ -108,15 +110,15 @@ async def join_queue(sid, data):
             await sio.emit('error', {'message': 'User gender not found. Please verify first.'}, room=sid)
             return
 
-        print(f"DEBUG: Matching for {device_id} ({user.gender}) seeking {preference}")
-        result = mapping_service.find_match(device_id, user.gender, preference)
+        print(f"DEBUG: Matching for {device_id} ({user.gender}) seeking {preference} with interests {interests}")
+        result = mapping_service.find_match(device_id, user.gender, preference, interests)
         print(f"DEBUG: Match Result: {result}")
         
         if result['status'] == 'matched':
-            # ... (emit match logic) ...
             session_id = result['session_id']
             partner_id = result['partner_id']
             partner_gender = result['partner_gender']
+            common_interest = result.get('common_interest')
             
             partner = db.query(User).filter(User.device_id == partner_id).first()
             partner_nickname = partner.nickname if (partner and partner.nickname) else "Stranger"
@@ -126,7 +128,8 @@ async def join_queue(sid, data):
                 'session_id': session_id,
                 'partner_id': partner_id,
                 'partner_gender': partner_gender,
-                'partner_nickname': partner_nickname
+                'partner_nickname': partner_nickname,
+                'common_interest': common_interest
             }
             
             await sio.emit('match_found', match_payload, room=sid)
@@ -135,7 +138,8 @@ async def join_queue(sid, data):
                 'session_id': session_id,
                 'partner_id': device_id,
                 'partner_gender': user.gender,
-                'partner_nickname': user_nickname
+                'partner_nickname': user_nickname,
+                'common_interest': common_interest
             }
             # Put both users in the room!
             await sio.enter_room(sid, session_id)
@@ -204,8 +208,12 @@ async def send_message(sid, data):
         is_ai_session = user_session.get('is_ai_session', False)
         ai_interests = user_session.get('ai_interests', '')
 
+    # Generate a unique message ID
+    message_id = str(uuid.uuid4())
+
     # RELAY ONLY - NO STORAGE
     response = {
+        'id': message_id,
         'sender_id': device_id,
         'content': content,
         'timestamp': import_datetime.utcnow().isoformat() + "Z"
@@ -222,7 +230,9 @@ async def send_message(sid, data):
         
         await sio.emit('partner_typing', {'is_typing': False}, room=session_id, skip_sid=sid)
         
+        ai_msg_id = str(uuid.uuid4())
         ai_msg = {
+            'id': ai_msg_id,
             'sender_id': 'AI_PARTNER',
             'content': reply_content,
             'timestamp': import_datetime.utcnow().isoformat() + "Z"
@@ -316,6 +326,35 @@ async def typing_stop(sid, data):
     if not session_id: return
     # Relay to room
     await sio.emit('partner_typing', {'is_typing': False}, room=session_id, skip_sid=sid)
+
+@sio.event
+async def message_reaction(sid, data):
+    session_id = data.get('session_id')
+    message_id = data.get('messageId')
+    emoji = data.get('emoji')
+    user_id = data.get('userId')
+    if not session_id or not message_id or not emoji or not user_id:
+        return
+    # Relay to the room, skip sender to prevent duplicate triggers
+    await sio.emit('message_reaction', {
+        'messageId': message_id,
+        'emoji': emoji,
+        'userId': user_id
+    }, room=session_id, skip_sid=sid)
+
+@sio.event
+async def share_locale(sid, data):
+    session_id = data.get('session_id')
+    locale = data.get('locale')
+    if not session_id or not locale: return
+    await sio.emit('partner_locale', {'locale': locale}, room=session_id, skip_sid=sid)
+
+@sio.event
+async def submit_rating(sid, data):
+    session_id = data.get('session_id')
+    rating = data.get('rating')
+    if not session_id or not rating: return
+    await sio.emit('partner_rated', {'rating': rating}, room=session_id, skip_sid=sid)
 
 @sio.event
 async def report_user(sid, data):
