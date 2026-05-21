@@ -9,11 +9,12 @@ import { Card } from '@/components/ui/Card';
 interface MatchingQueueProps {
     onMatchFound: (sessionData: any) => void;
     onCancel: () => void;
+    interests: string[];
 }
 
 const QUEUE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-export default function MatchingQueue({ onMatchFound, onCancel }: MatchingQueueProps) {
+export default function MatchingQueue({ onMatchFound, onCancel, interests }: MatchingQueueProps) {
     const [status, setStatus] = useState('Connecting...');
     const [preference, setPreference] = useState<'male' | 'female' | 'any'>('any');
     const [queueTime, setQueueTime] = useState(0);
@@ -74,7 +75,7 @@ export default function MatchingQueue({ onMatchFound, onCancel }: MatchingQueueP
                 new Notification("Klymo Chat", { body: "Match Found! Connecting you now..." });
             }
 
-            setStatus('matched');
+            setStatus('Match Found!');
             setTimeout(() => {
                 if (isMounted) {
                     // Adapt Backend Data Structure to Frontend Component Expectations
@@ -180,7 +181,7 @@ export default function MatchingQueue({ onMatchFound, onCancel }: MatchingQueueP
         setPreference(pref);
         setStatus(`Searching...`);
         const socket = getSocket();
-        socket.emit('join_queue', { preference: pref });
+        socket.emit('join_queue', { preference: pref, interests: interests });
     };
 
     const handleCancel = () => {

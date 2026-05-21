@@ -17,9 +17,30 @@ interface ChatInterfaceProps {
             nickname?: string;
             gender?: string;
         };
+        common_interest?: string;
     };
     onLeave: () => void;
-    onNext: () => void;
+    onChatCompleted: (partnerLocale: string | null) => void;
+    onMessageSent: () => void;
+    onReceivedFiveStarRating: () => void;
+    initialIcebreaker?: string | null;
+    onChatEnded: (data: {
+        duration: number;
+        commonInterest?: string | null;
+        messageCount: number;
+        sessionId: string;
+        partnerNickname: string;
+        partnerDeviceId: string;
+        action: 'leave' | 'next';
+    }) => void;
+}
+
+const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+interface ReactionsState {
+    [messageId: string]: {
+        [emoji: string]: string[];
+    };
 }
 
 interface Message {
@@ -30,21 +51,136 @@ interface Message {
     isMe: boolean;
 }
 
-export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInterfaceProps) {
+export default function ChatInterface({ sessionData, onLeave, onChatCompleted, onMessageSent, onReceivedFiveStarRating, initialIcebreaker = null, onChatEnded }: ChatInterfaceProps) {
     const [messages, setMessages] = useState<Message[]>([]);
-    const [input, setInput] = useState('');
+    const [input, setInput] = useState(initialIcebreaker || '');
     const [myId, setMyId] = useState<string>('');
     const myIdRef = useRef<string>('');
     const [partnerLeft, setPartnerLeft] = useState(false);
     const [partnerTyping, setPartnerTyping] = useState(false);
     const [showReportModal, setShowReportModal] = useState(false);
     const [isConnected, setIsConnected] = useState(true);
+    const [showInterestBadge, setShowInterestBadge] = useState(true);
+    const [showChallengeBanner, setShowChallengeBanner] = useState(true);
+
+    const [reactions, setReactions] = useState<ReactionsState>({});
+    const [activePickerMessageId, setActivePickerMessageId] = useState<string | null>(null);
+    const [isTouch, setIsTouch] = useState(false);
+
+    // Badges / Stats related states
+    const [partnerLocale, setPartnerLocale] = useState<string | null>(null);
+    const partnerLocaleRef = useRef<string | null>(null);
+    // Removed old rating states (handled in PostChatSummary)
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
-    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const isTypingRef = useRef(false);
+    const typingStartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const typingStopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const touchTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const touchStartXRef = useRef<number>(0);
+    const touchStartYRef = useRef<number>(0);
 
     const listenersRegistered = useRef(false);
+
+    const toggleReactionInState = (messageId: string, emoji: string, userId: string) => {
+        setReactions((prev) => {
+            const msgReactions = prev[messageId] || {};
+            const userList = msgReactions[emoji] || [];
+
+            let newUsers: string[];
+            if (userList.includes(userId)) {
+                newUsers = userList.filter(id => id !== userId);
+            } else {
+                newUsers = [...userList, userId];
+            }
+
+            const newMsgReactions = { ...msgReactions };
+            if (newUsers.length > 0) {
+                newMsgReactions[emoji] = newUsers;
+            } else {
+                delete newMsgReactions[emoji];
+            }
+
+            const newReactions = { ...prev };
+            if (Object.keys(newMsgReactions).length > 0) {
+                newReactions[messageId] = newMsgReactions;
+            } else {
+                delete newReactions[messageId];
+            }
+
+            return newReactions;
+        });
+    };
+
+    const handleReact = (messageId: string, emoji: string) => {
+        if (!myIdRef.current) return;
+        // 1. Toggle locally (optimistic)
+        toggleReactionInState(messageId, emoji, myIdRef.current);
+
+        // 2. Emit event to socket
+        const socket = getSocket();
+        socket.emit('message_reaction', {
+            session_id: sessionData.session_id,
+            messageId,
+            emoji,
+            userId: myIdRef.current
+        });
+
+        // Close picker
+        setActivePickerMessageId(null);
+    };
+
+    const handleMouseEnter = (msgId: string) => {
+        if (isTouch) return;
+        setActivePickerMessageId(msgId);
+    };
+
+    const handleMouseLeave = () => {
+        if (isTouch) return;
+        setActivePickerMessageId(null);
+    };
+
+    const handleTouchStart = (msgId: string, e: React.TouchEvent) => {
+        setIsTouch(true);
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        touchStartXRef.current = touch.clientX;
+        touchStartYRef.current = touch.clientY;
+
+        if (touchTimerRef.current) {
+            clearTimeout(touchTimerRef.current);
+        }
+
+        touchTimerRef.current = setTimeout(() => {
+            setActivePickerMessageId(msgId);
+            if (navigator.vibrate) {
+                navigator.vibrate(50);
+            }
+        }, 500);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        const dx = touch.clientX - touchStartXRef.current;
+        const dy = touch.clientY - touchStartYRef.current;
+
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+            if (touchTimerRef.current) {
+                clearTimeout(touchTimerRef.current);
+                touchTimerRef.current = null;
+            }
+        }
+    };
+
+    const handleTouchEnd = () => {
+        if (touchTimerRef.current) {
+            clearTimeout(touchTimerRef.current);
+            touchTimerRef.current = null;
+        }
+    };
 
     useEffect(() => {
         const socket = getSocket();
@@ -56,6 +192,10 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             myIdRef.current = id;
 
             socket.emit('join_session', { session_id: sessionData.session_id });
+
+            // Share local browser locale
+            const userLocale = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
+            socket.emit('share_locale', { session_id: sessionData.session_id, locale: userLocale });
 
             if (listenersRegistered.current) return;
             listenersRegistered.current = true;
@@ -72,7 +212,7 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                     if (exists) return prev;
 
                     return [...prev, {
-                        id: `${Date.now()}-${Math.random()}`,
+                        id: data.id || `${Date.now()}-${Math.random()}`,
                         sender_id: data.sender_id,
                         content: data.content,
                         timestamp: data.timestamp || new Date().toISOString(),
@@ -90,6 +230,18 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                 setPartnerTyping(data.is_typing);
             };
 
+            const handleMessageReaction = (data: any) => {
+                const { messageId, emoji, userId } = data;
+                toggleReactionInState(messageId, emoji, userId);
+            };
+
+            const handlePartnerLocale = (data: any) => {
+                if (data && data.locale) {
+                    setPartnerLocale(data.locale);
+                    partnerLocaleRef.current = data.locale;
+                }
+            };
+
             const handleDisconnect = () => setIsConnected(false);
             const handleConnect = () => setIsConnected(true);
 
@@ -98,6 +250,8 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             socket.on('partner_typing', handlePartnerTyping);
             socket.on('disconnect', handleDisconnect);
             socket.on('connect', handleConnect);
+            socket.on('message_reaction', handleMessageReaction);
+            socket.on('partner_locale', handlePartnerLocale);
 
             return () => {
                 socket.off('new_message', handleNewMessage);
@@ -105,6 +259,8 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                 socket.off('partner_typing', handlePartnerTyping);
                 socket.off('disconnect', handleDisconnect);
                 socket.off('connect', handleConnect);
+                socket.off('message_reaction', handleMessageReaction);
+                socket.off('partner_locale', handlePartnerLocale);
                 listenersRegistered.current = false;
             };
         };
@@ -120,6 +276,15 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             }
         }
 
+        const savedReactions = sessionStorage.getItem(`reactions_${sessionData.session_id}`);
+        if (savedReactions) {
+            try {
+                setReactions(JSON.parse(savedReactions));
+            } catch (e) {
+                console.error("Failed to parse saved reactions", e);
+            }
+        }
+
         return () => {
             cleanupPromise.then(cleanup => cleanup?.());
         };
@@ -130,19 +295,117 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
     }, [messages, partnerTyping]);
 
     useEffect(() => {
+        return () => {
+            if (typingStartTimeoutRef.current) clearTimeout(typingStartTimeoutRef.current);
+            if (typingStopTimeoutRef.current) clearTimeout(typingStopTimeoutRef.current);
+            if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+        };
+    }, []);
+
+    useEffect(() => {
         if (messages.length > 0) {
             sessionStorage.setItem(`chat_${sessionData.session_id}`, JSON.stringify(messages));
         }
     }, [messages, sessionData.session_id]);
 
+    useEffect(() => {
+        if (reactions && Object.keys(reactions).length > 0) {
+            sessionStorage.setItem(`reactions_${sessionData.session_id}`, JSON.stringify(reactions));
+        } else {
+            sessionStorage.removeItem(`reactions_${sessionData.session_id}`);
+        }
+    }, [reactions, sessionData.session_id]);
+
+    useEffect(() => {
+        if (!activePickerMessageId) return;
+
+        const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+            const target = e.target as HTMLElement;
+            if (!target.closest('.reaction-picker') && !target.closest('.message-bubble')) {
+                setActivePickerMessageId(null);
+            }
+        };
+
+        document.addEventListener('mousedown', handleOutsideClick);
+        document.addEventListener('touchstart', handleOutsideClick, { passive: true });
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+            document.removeEventListener('touchstart', handleOutsideClick);
+        };
+    }, [activePickerMessageId]);
+
+    useEffect(() => {
+        const sessionStartKey = `chat_start_time_${sessionData.session_id}`;
+        const sessionCompletedKey = `chat_completed_${sessionData.session_id}`;
+
+        let startTime = sessionStorage.getItem(sessionStartKey);
+        if (!startTime) {
+            startTime = Date.now().toString();
+            sessionStorage.setItem(sessionStartKey, startTime);
+        }
+        const startMs = parseInt(startTime, 10);
+
+        const elapsed = Date.now() - startMs;
+        const remaining = 120000 - elapsed;
+
+        let completionTimeout: NodeJS.Timeout | null = null;
+
+        if (remaining > 0) {
+            completionTimeout = setTimeout(() => {
+                const alreadyCompleted = sessionStorage.getItem(sessionCompletedKey);
+                if (!alreadyCompleted) {
+                    sessionStorage.setItem(sessionCompletedKey, 'true');
+                    onChatCompleted(partnerLocaleRef.current);
+                }
+            }, remaining);
+        } else {
+            const alreadyCompleted = sessionStorage.getItem(sessionCompletedKey);
+            if (!alreadyCompleted) {
+                sessionStorage.setItem(sessionCompletedKey, 'true');
+                onChatCompleted(partnerLocaleRef.current);
+            }
+        }
+
+        return () => {
+            if (completionTimeout) {
+                clearTimeout(completionTimeout);
+            }
+        };
+    }, [sessionData.session_id, onChatCompleted]);
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setInput(e.target.value);
         const socket = getSocket();
-        socket.emit('typing_start', { session_id: sessionData.session_id });
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
-            socket.emit('typing_stop', { session_id: sessionData.session_id });
-        }, 1500);
+
+        // Clear any pending stop timeout since user is typing
+        if (typingStopTimeoutRef.current) {
+            clearTimeout(typingStopTimeoutRef.current);
+            typingStopTimeoutRef.current = null;
+        }
+
+        // If we are not currently flagged as typing
+        if (!isTypingRef.current) {
+            // Debounce the typing_start emit by 300ms to avoid flooding
+            if (!typingStartTimeoutRef.current) {
+                typingStartTimeoutRef.current = setTimeout(() => {
+                    socket.emit('typing_start', { session_id: sessionData.session_id });
+                    isTypingRef.current = true;
+                    typingStartTimeoutRef.current = null;
+                }, 300);
+            }
+        }
+
+        // Stop emitting the typing event 2 seconds after the user stops typing (debounce)
+        typingStopTimeoutRef.current = setTimeout(() => {
+            if (isTypingRef.current) {
+                socket.emit('typing_stop', { session_id: sessionData.session_id });
+                isTypingRef.current = false;
+            }
+            if (typingStartTimeoutRef.current) {
+                clearTimeout(typingStartTimeoutRef.current);
+                typingStartTimeoutRef.current = null;
+            }
+        }, 2000);
     };
 
     const handleSend = async (e: React.FormEvent) => {
@@ -161,9 +424,21 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             session_id: sessionData.session_id,
             content: input.trim()
         });
+        
+        onMessageSent();
 
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        socket.emit('typing_stop', { session_id: sessionData.session_id });
+        if (typingStartTimeoutRef.current) {
+            clearTimeout(typingStartTimeoutRef.current);
+            typingStartTimeoutRef.current = null;
+        }
+        if (typingStopTimeoutRef.current) {
+            clearTimeout(typingStopTimeoutRef.current);
+            typingStopTimeoutRef.current = null;
+        }
+        if (isTypingRef.current) {
+            socket.emit('typing_stop', { session_id: sessionData.session_id });
+            isTypingRef.current = false;
+        }
 
         setInput('');
         inputRef.current?.focus();
@@ -171,20 +446,71 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
 
 
 
-    const handleLeave = () => {
-        const socket = getSocket();
-        socket.emit('leave_chat', { session_id: sessionData.session_id });
-        sessionStorage.removeItem(`chat_${sessionData.session_id}`);
-        onLeave();
+    const checkCompletionOnExit = () => {
+        const sessionStartKey = `chat_start_time_${sessionData.session_id}`;
+        const sessionCompletedKey = `chat_completed_${sessionData.session_id}`;
+        const startTime = sessionStorage.getItem(sessionStartKey);
+        if (startTime) {
+            const startMs = parseInt(startTime, 10);
+            if (Date.now() - startMs >= 120000) {
+                const alreadyCompleted = sessionStorage.getItem(sessionCompletedKey);
+                if (!alreadyCompleted) {
+                    sessionStorage.setItem(sessionCompletedKey, 'true');
+                    onChatCompleted(partnerLocaleRef.current);
+                }
+            }
+        }
     };
 
-    const handleNext = () => {
-        if (!partnerLeft) {
+    const executeExit = (action: 'leave' | 'next') => {
+        if (!partnerLeft || action === 'leave') {
             const socket = getSocket();
             socket.emit('leave_chat', { session_id: sessionData.session_id });
         }
         sessionStorage.removeItem(`chat_${sessionData.session_id}`);
-        onNext();
+        sessionStorage.removeItem(`reactions_${sessionData.session_id}`);
+        if (action === 'leave') {
+            onLeave();
+        }
+    };
+
+    const triggerExit = (action: 'leave' | 'next') => {
+        checkCompletionOnExit();
+
+        const sessionStartKey = `chat_start_time_${sessionData.session_id}`;
+        const startTime = sessionStorage.getItem(sessionStartKey);
+        const startMs = startTime ? parseInt(startTime, 10) : Date.now();
+        const durationSec = Math.floor((Date.now() - startMs) / 1000);
+
+        // Notify partner we left
+        if (!partnerLeft || action === 'leave') {
+            const socket = getSocket();
+            socket.emit('leave_chat', { session_id: sessionData.session_id });
+        }
+
+        // AI Partner 5-star simulation on exit
+        const isAI = sessionData.partner.device_id === 'AI_PARTNER' || sessionData.partner.nickname === 'AI Partner';
+        if (isAI) {
+            const userSentMessages = messages.some(m => m.isMe);
+            if (userSentMessages && Math.random() < 0.8) {
+                onReceivedFiveStarRating();
+            }
+        }
+
+        sessionStorage.removeItem(`chat_${sessionData.session_id}`);
+        sessionStorage.removeItem(`reactions_${sessionData.session_id}`);
+        sessionStorage.removeItem(sessionStartKey);
+        sessionStorage.removeItem(`chat_completed_${sessionData.session_id}`);
+
+        onChatEnded({
+            duration: durationSec,
+            commonInterest: sessionData.common_interest || null,
+            messageCount: messages.length,
+            sessionId: sessionData.session_id,
+            partnerNickname: sessionData.partner.nickname || "Stranger",
+            partnerDeviceId: sessionData.partner.device_id,
+            action: action
+        });
     };
 
     const handleReport = (reason: string) => {
@@ -195,7 +521,7 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
             reported_device_id: sessionData.partner.device_id
         });
         setShowReportModal(false);
-        handleLeave();
+        executeExit('leave');
     };
 
     return (
@@ -221,14 +547,52 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                 <div className="flex gap-2">
                     <Button onClick={() => setShowReportModal(true)} variant="outline" size="sm" className="px-2 border-2">⚠️</Button>
                     {sessionData.partner.device_id !== 'AI_PARTNER' && sessionData.partner.nickname !== 'AI Partner' && (
-                        <Button onClick={handleNext} variant="secondary" size="sm" className="font-bold border-2">NEXT ➔</Button>
+                        <Button onClick={() => triggerExit('next')} variant="secondary" size="sm" className="font-bold border-2">NEXT ➔</Button>
                     )}
-                    <Button onClick={handleLeave} variant="outline" size="sm" className="px-2 border-red-500 text-red-500 border-2">✕</Button>
+                    <Button onClick={() => triggerExit('leave')} variant="outline" size="sm" className="px-2 border-red-500 text-red-500 border-2">✕</Button>
                 </div>
             </div>
 
+            {/* Common Interest Banner */}
+            {sessionData.common_interest && showInterestBadge && (
+                <div className="bg-gray-50 border-b-[3px] border-black p-2 flex justify-center items-center z-10 animate-in slide-in-from-top-2">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border-2 border-black bg-gray-100 text-xs font-bold text-gray-700 shadow-[2px_2px_0px_0px_#000]">
+                        <span>🤝 You both like {sessionData.common_interest}</span>
+                        <button
+                            type="button"
+                            onClick={() => setShowInterestBadge(false)}
+                            className="ml-1 w-4 h-4 flex items-center justify-center rounded-full hover:bg-gray-200 font-bold text-[10px] cursor-pointer"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Challenge Banner */}
+            {initialIcebreaker && showChallengeBanner && (
+                <div className="bg-yellow-100 border-b-[3px] border-black p-2.5 flex justify-between items-center z-10 animate-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2">
+                        <span className="font-black text-black text-xs md:text-sm tracking-wider uppercase">
+                            📅 CHALLENGE CHAT:
+                        </span>
+                        <span className="font-bold text-black text-xs md:text-sm">
+                            {initialIcebreaker}
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setShowChallengeBanner(false)}
+                        className="ml-2 w-5 h-5 flex items-center justify-center rounded-full border-2 border-black bg-white hover:bg-gray-100 font-bold text-xs shadow-[1px_1px_0px_0px_#000] cursor-pointer"
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
+
+
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white relative">
+            <div className="flex-1 overflow-y-auto p-4 pb-8 space-y-4 bg-white relative">
                 {/* Background Pattern */}
                 <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
 
@@ -246,34 +610,85 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                 )}
 
                 {messages.map((msg) => (
-                    <div key={msg.id} className={`flex ${msg.isMe ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
-                        <div className={`max-w-[80%] p-4 border-[3px] border-black shadow-[4px_4px_0px_0px_#000] ${msg.isMe
-                            ? 'bg-accent text-black rounded-none mr-2'
-                            : 'bg-white text-black rounded-none ml-2'
-                            }`}>
+                    <div
+                        key={msg.id}
+                        className={`flex flex-col ${msg.isMe ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2`}
+                    >
+                        <div
+                            onMouseEnter={() => handleMouseEnter(msg.id)}
+                            onMouseLeave={handleMouseLeave}
+                            onTouchStart={(e) => handleTouchStart(msg.id, e)}
+                            onTouchMove={handleTouchMove}
+                            onTouchEnd={handleTouchEnd}
+                            className={`max-w-[80%] p-4 border-[3px] border-black shadow-[4px_4px_0px_0px_#000] relative message-bubble ${msg.isMe
+                                ? 'bg-accent text-black rounded-none mr-2'
+                                : 'bg-white text-black rounded-none ml-2'
+                            }`}
+                        >
+                            {/* Reaction picker */}
+                            {activePickerMessageId === msg.id && (
+                                <div
+                                    className={`absolute bottom-full mb-2 flex items-center gap-0.5 bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_#000] p-1.5 z-30 reaction-picker animate-scale-up ${
+                                        msg.isMe ? 'right-0' : 'left-0'
+                                    }`}
+                                >
+                                    {EMOJIS.map((emoji) => (
+                                        <button
+                                            key={emoji}
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleReact(msg.id, emoji);
+                                            }}
+                                            className="hover:bg-gray-100 p-1 text-xl transition-transform active:scale-125 cursor-pointer"
+                                        >
+                                            {emoji}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
                             <p className="font-medium text-lg leading-tight">{msg.content}</p>
                             <p className="text-[10px] font-bold uppercase mt-2 opacity-50 text-right">
                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </p>
                         </div>
+
+                        {/* Reactions displaying below message bubble */}
+                        {reactions[msg.id] && Object.keys(reactions[msg.id]).length > 0 && (
+                            <div className={`flex flex-wrap gap-1 mt-1 mb-2 ${msg.isMe ? 'justify-end mr-2' : 'justify-start ml-2'}`}>
+                                {Object.entries(reactions[msg.id]).map(([emoji, userIds]) => {
+                                    const hasReacted = userIds.includes(myId);
+                                    return (
+                                        <button
+                                            key={emoji}
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleReact(msg.id, emoji);
+                                            }}
+                                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 border-[2px] border-black text-xs font-black transition-all cursor-pointer ${
+                                                hasReacted
+                                                    ? 'bg-primary text-black shadow-[1px_1px_0px_0px_#000] translate-y-[1px]'
+                                                    : 'bg-white text-black shadow-[2px_2px_0px_0px_#000]'
+                                            }`}
+                                        >
+                                            <span>{emoji} {userIds.length}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 ))}
 
-                {partnerTyping && (
-                    <div className="flex justify-start">
-                        <div className="bg-gray-200 border-[3px] border-black p-3 flex gap-1 items-center shadow-[4px_4px_0px_0px_#000]">
-                            <span className="w-2 h-2 bg-black animate-bounce"></span>
-                            <span className="w-2 h-2 bg-black animate-bounce [animation-delay:0.1s]"></span>
-                            <span className="w-2 h-2 bg-black animate-bounce [animation-delay:0.2s]"></span>
-                        </div>
-                    </div>
-                )}
+
 
                 {partnerLeft && (
                     <div className="flex justify-center p-8">
                         <Card className="text-center bg-gray-100 border-dashed">
                             <h3 className="text-2xl font-black uppercase mb-2">Partner Disconnected</h3>
-                            <Button onClick={handleNext} variant="primary" size="lg" className="w-full">
+                            <Button onClick={() => triggerExit('next')} variant="primary" size="lg" className="w-full">
                                 Find Next Match
                             </Button>
                         </Card>
@@ -281,6 +696,16 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                 )}
 
                 <div ref={messagesEndRef} />
+
+                {/* Typing Indicator */}
+                <div className={`absolute bottom-1 left-4 flex items-center gap-1 text-xs font-black uppercase text-gray-500 tracking-wider transition-opacity duration-300 pointer-events-none ${partnerTyping ? 'opacity-100' : 'opacity-0'}`}>
+                    <span>Stranger is typing</span>
+                    <span className="flex items-center gap-0.5 ml-0.5">
+                        <span className="w-1.5 h-1.5 bg-current rounded-full animate-dot-bounce"></span>
+                        <span className="w-1.5 h-1.5 bg-current rounded-full animate-dot-bounce [animation-delay:0.2s]"></span>
+                        <span className="w-1.5 h-1.5 bg-current rounded-full animate-dot-bounce [animation-delay:0.4s]"></span>
+                    </span>
+                </div>
             </div>
 
             {/* Input Area */}
@@ -347,6 +772,8 @@ export default function ChatInterface({ sessionData, onLeave, onNext }: ChatInte
                     </Card>
                 </div>
             )}
+
+            {/* Rating Modal Overlay removed - Handled in separate Summary Step */}
         </Card>
     );
 }
