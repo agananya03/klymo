@@ -33,6 +33,10 @@ export default function ProfileForm({ onProfileComplete }: ProfileFormProps) {
                     if (data.nickname) setNickname(data.nickname);
                     if (data.bio) setBio(data.bio);
                     if (data.preference) setPreference(data.preference);
+                } else if (res.status === 404) {
+                    // Database was reset/switched. Clear local cache and trigger re-verification.
+                    localStorage.removeItem('klymo_is_verified');
+                    window.location.reload();
                 }
             } catch (err) {
                 console.error("Failed to load profile", err);
