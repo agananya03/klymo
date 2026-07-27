@@ -16,7 +16,7 @@ async def verify_gender_from_bytes(image_bytes: bytes) -> List[Dict[str, Any]]:
     # Fallback to default if URL not provided
     if not model_url or not model_url.startswith("http"):
         model_id = settings.model_id
-        model_url = f"https://api-inference.huggingface.co/models/{model_id}"
+        model_url = f"https://router.huggingface.co/hf-inference/models/{model_id}"
     
     if not api_key:
         logger.warning("No Hugging Face API Key found in settings.")

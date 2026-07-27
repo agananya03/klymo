@@ -12,7 +12,7 @@ class FaceDetectionService:
             return {"error": "Configuration missing"}
 
         try:
-            url = f"https://api-inference.huggingface.co/models/{model_id}"
+            url = f"https://router.huggingface.co/hf-inference/models/{model_id}"
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "image/jpeg"

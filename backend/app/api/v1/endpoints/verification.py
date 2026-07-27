@@ -64,14 +64,13 @@ async def verify_gender(
         try:
             # Debug log to verify config
             from app.core.config import settings
-            logger.info(f"Using Model URL: {settings.HUGGINGFACE_MODEL_URL}")
+            logger.info(f"Using Model URL: {settings.HUGGINGFACE_MODEL_URL or settings.model_id}")
             
             result = await verify_gender_from_bytes(image_bytes)
             logger.info(f"Verification result for {device_id}: {result}")
         except ValueError as e:
-            # Fallback for Development/Demo Stability:
-            logger.error(f"AI Service Failed: {e}. FALLBACK ACTIVATED.")
-            result = [{"label": "female", "score": 0.99}] 
+            logger.error(f"AI Service Failed: {e}")
+            raise HTTPException(status_code=503, detail=f"Gender verification service unavailable: {str(e)}")
         finally:
             await file.close()
 
@@ -91,7 +90,7 @@ async def verify_gender(
             if not detected_gender:
                  raise HTTPException(status_code=400, detail="Could not determine gender from image.")
 
-            if confidence < 0.90:
+            if confidence < 0.50:
                  raise HTTPException(
                      status_code=400, 
                      detail=f"Verification failed. Low confidence ({confidence:.2f}). Please try again with better lighting."
