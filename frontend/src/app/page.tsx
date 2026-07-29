@@ -391,6 +391,7 @@ export default function Home() {
                 setChallengeIcebreaker(null);
                 setStep('dashboard');
               }}
+              onStartAIChat={() => setStep('ai_setup')}
             />
           )}
 

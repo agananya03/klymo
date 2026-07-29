@@ -103,9 +103,9 @@ export default function AIPartnerForm({ onBack, onMatchFound }: AIPartnerFormPro
     }, []);
 
     const handleStartChat = () => {
-        if (!interests.trim()) return;
         setIsLoading(true);
-        console.log("Starting chat...");
+        const activeInterests = interests.trim() || 'General Chat';
+        console.log("Starting chat with interests:", activeInterests);
         const socket = getSocket();
 
         // Remove previous listener specifically
@@ -137,8 +137,8 @@ export default function AIPartnerForm({ onBack, onMatchFound }: AIPartnerFormPro
         matchFoundListenerRef.current = handleMatchFound;
         socket.on('match_found', handleMatchFound);
 
-        console.log(`Emitting 'join_ai_queue' with interests: ${interests}`);
-        socket.emit('join_ai_queue', { interests });
+        console.log(`Emitting 'join_ai_queue' with interests: ${activeInterests}`);
+        socket.emit('join_ai_queue', { interests: activeInterests });
 
         // Dashboard will handle the 'match_found' event and switch to ChatInterface
     };
@@ -160,7 +160,7 @@ export default function AIPartnerForm({ onBack, onMatchFound }: AIPartnerFormPro
                         className="w-full p-4 border-[3px] border-black font-bold focus:outline-none focus:shadow-hard min-h-[120px] resize-none"
                     />
                     <p className="text-xs text-gray-500 mt-2 font-bold uppercase">
-                        The AI will roleplay based on these topics.
+                        The AI will roleplay based on these topics (or general chat if empty).
                     </p>
                 </div>
 
@@ -170,7 +170,7 @@ export default function AIPartnerForm({ onBack, onMatchFound }: AIPartnerFormPro
                         variant="primary"
                         size="lg"
                         className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white border-black"
-                        disabled={!interests.trim() || isLoading || !isConnected}
+                        disabled={isLoading || !isConnected}
                     >
                         {isLoading ? 'CONNECTING...' : (!isConnected ? 'WAITING FOR CONNECTION...' : 'START AI CHAT')}
                     </Button>

@@ -132,14 +132,25 @@ export default function ChatInterface({ sessionData, onLeave, onChatCompleted, o
         setActivePickerMessageId(null);
     };
 
+    const leaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     const handleMouseEnter = (msgId: string) => {
         if (isTouch) return;
+        if (leaveTimeoutRef.current) {
+            clearTimeout(leaveTimeoutRef.current);
+            leaveTimeoutRef.current = null;
+        }
         setActivePickerMessageId(msgId);
     };
 
     const handleMouseLeave = () => {
         if (isTouch) return;
-        setActivePickerMessageId(null);
+        if (leaveTimeoutRef.current) {
+            clearTimeout(leaveTimeoutRef.current);
+        }
+        leaveTimeoutRef.current = setTimeout(() => {
+            setActivePickerMessageId(null);
+        }, 300);
     };
 
     const handleTouchStart = (msgId: string, e: React.TouchEvent) => {
@@ -299,6 +310,7 @@ export default function ChatInterface({ sessionData, onLeave, onChatCompleted, o
             if (typingStartTimeoutRef.current) clearTimeout(typingStartTimeoutRef.current);
             if (typingStopTimeoutRef.current) clearTimeout(typingStopTimeoutRef.current);
             if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+            if (leaveTimeoutRef.current) clearTimeout(leaveTimeoutRef.current);
         };
     }, []);
 
@@ -628,7 +640,9 @@ export default function ChatInterface({ sessionData, onLeave, onChatCompleted, o
                             {/* Reaction picker */}
                             {activePickerMessageId === msg.id && (
                                 <div
-                                    className={`absolute bottom-full mb-2 flex items-center gap-0.5 bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_#000] p-1.5 z-30 reaction-picker animate-scale-up ${
+                                    onMouseEnter={() => handleMouseEnter(msg.id)}
+                                    onMouseLeave={handleMouseLeave}
+                                    className={`absolute bottom-full mb-2 flex items-center gap-0.5 bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_#000] p-1.5 z-30 reaction-picker animate-scale-up before:absolute before:-bottom-3 before:left-0 before:right-0 before:h-4 before:content-[''] ${
                                         msg.isMe ? 'right-0' : 'left-0'
                                     }`}
                                 >
@@ -647,6 +661,19 @@ export default function ChatInterface({ sessionData, onLeave, onChatCompleted, o
                                     ))}
                                 </div>
                             )}
+
+                            {/* Quick Reaction Toggle Button */}
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActivePickerMessageId(prev => prev === msg.id ? null : msg.id);
+                                }}
+                                className={`absolute -top-3 ${msg.isMe ? '-left-3' : '-right-3'} w-6 h-6 rounded-full bg-white border-2 border-black flex items-center justify-center text-xs opacity-70 hover:opacity-100 hover:scale-110 transition-all shadow-[1px_1px_0px_0px_#000] z-20 cursor-pointer`}
+                                title="React to message"
+                            >
+                                😊
+                            </button>
 
                             <p className="font-medium text-lg leading-tight">{msg.content}</p>
                             <p className="text-[10px] font-bold uppercase mt-2 opacity-50 text-right">

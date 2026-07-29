@@ -39,8 +39,11 @@ async def connect(sid, environ, auth):
     try:
         user = db.query(User).filter(User.device_id == device_id).first()
         if not user:
-            print(f"DEBUG: Connect Rejected - User Not Found {device_id}")
-            raise ConnectionRefusedError('Identity missing. Please verify first.')
+            print(f"DEBUG: Connect Auto-creating User for {device_id}")
+            user = User(device_id=device_id)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
             
         if user.is_banned:
             print(f"DEBUG: Connect Rejected - Banned User {device_id}")
@@ -186,15 +189,15 @@ async def leave_queue(sid, data):
 
 @sio.event
 async def join_session(sid, data):
-    # Same as before
     session_id = data.get('session_id')
     if not session_id: return
     
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
         user_session['active_session_id'] = session_id
+        if session_id.startswith('ai_session_'):
+            user_session['is_ai_session'] = True
     
-    # Validation logic...
     await sio.enter_room(sid, session_id)
 
 @sio.event
@@ -205,7 +208,7 @@ async def send_message(sid, data):
     
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
-        is_ai_session = user_session.get('is_ai_session', False)
+        is_ai_session = user_session.get('is_ai_session', False) or (session_id and session_id.startswith('ai_session_'))
         ai_interests = user_session.get('ai_interests', '')
 
     # Generate a unique message ID
@@ -223,7 +226,6 @@ async def send_message(sid, data):
     # AI RESPONSE HANDLING
     if is_ai_session:
         from app.services.ai_service import ai_service
-        # Simulate typing delay?
         await sio.emit('partner_typing', {'is_typing': True}, room=session_id, skip_sid=sid)
         
         reply_content = await ai_service.generate_response(content, interests=ai_interests)
@@ -242,7 +244,7 @@ async def send_message(sid, data):
 @sio.event
 async def join_ai_queue(sid, data):
     print(f"DEBUG: join_ai_queue {sid} {data}")
-    interests = data.get('interests', '')
+    interests = data.get('interests', '') or 'General Chat'
     
     async with sio.session(sid) as user_session:
         device_id = user_session.get('device_id')
@@ -274,15 +276,18 @@ async def join_ai_queue(sid, data):
     }
     await sio.emit('match_found', match_payload, room=sid)
 
-    # Initial AI Greeting
+    # Initial AI Greeting - emit to both sid and session_id room
     from app.services.ai_service import ai_service
     greeting = await ai_service.generate_response("Hello!", interests=interests)
     
-    await sio.emit('new_message', {
+    ai_greeting_msg = {
+        'id': str(uuid.uuid4()),
         'sender_id': 'AI_PARTNER',
         'content': greeting,
         'timestamp': import_datetime.utcnow().isoformat() + "Z"
-    }, room=sid)
+    }
+    await sio.emit('new_message', ai_greeting_msg, room=session_id)
+    await sio.emit('new_message', ai_greeting_msg, room=sid)
 
 @sio.event
 async def leave_chat(sid, data):

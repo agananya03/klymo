@@ -10,17 +10,27 @@ interface MatchingQueueProps {
     onMatchFound: (sessionData: any) => void;
     onCancel: () => void;
     interests: string[];
+    onStartAIChat?: () => void;
 }
 
 const QUEUE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-export default function MatchingQueue({ onMatchFound, onCancel, interests }: MatchingQueueProps) {
+export default function MatchingQueue({ onMatchFound, onCancel, interests, onStartAIChat }: MatchingQueueProps) {
     const [status, setStatus] = useState('Connecting...');
     const [preference, setPreference] = useState<'male' | 'female' | 'any'>('any');
     const [queueTime, setQueueTime] = useState(0);
     const queueTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const queueStartRef = useRef<number | null>(null);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    const handleSwitchToAI = () => {
+        const socket = getSocket();
+        socket.emit('leave_queue', {});
+        clearQueueTimer();
+        if (onStartAIChat) {
+            onStartAIChat();
+        }
+    };
 
     useEffect(() => {
         // Request Notification Permission on mount
@@ -230,13 +240,19 @@ export default function MatchingQueue({ onMatchFound, onCancel, interests }: Mat
                         <div className="w-16 h-16 bg-primary border-4 border-black" />
                     </div>
 
-                    <div className="space-y-4 z-10">
+                    <div className="space-y-4 z-10 w-full flex flex-col items-center">
                         <h2 className="text-4xl font-black uppercase bg-primary px-4 py-1 border-[3px] border-black inline-block">
                             {formatTime(queueTime)}
                         </h2>
                         <p className="text-xl font-bold uppercase">Finding Match...</p>
 
-                        <Button onClick={handleCancel} variant="outline" className="border-red-500 text-red-500 hover:bg-red-50">
+                        {onStartAIChat && (
+                            <Button onClick={handleSwitchToAI} variant="accent" className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-black border-2 border-black shadow-[3px_3px_0px_0px_#000]">
+                                CHAT WITH AI INSTEAD 🤖
+                            </Button>
+                        )}
+
+                        <Button onClick={handleCancel} variant="outline" className="w-full border-red-500 text-red-500 hover:bg-red-50">
                             CANCEL
                         </Button>
                     </div>
@@ -256,8 +272,13 @@ export default function MatchingQueue({ onMatchFound, onCancel, interests }: Mat
                     <h2 className="text-3xl font-black uppercase bg-red-500 text-white px-4 border-[3px] border-black">
                         No Luck
                     </h2>
-                    <p className="font-bold">Try again later.</p>
+                    <p className="font-bold">No other users online right now.</p>
                     <div className="flex flex-col w-full gap-3 relative z-10">
+                        {onStartAIChat && (
+                            <Button onClick={handleSwitchToAI} variant="accent" className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-black border-2 border-black shadow-[3px_3px_0px_0px_#000]">
+                                CHAT WITH AI INSTEAD 🤖
+                            </Button>
+                        )}
                         <Button onClick={() => setStatus('Select a preference')} variant="primary" className="w-full">
                             TRY AGAIN
                         </Button>
